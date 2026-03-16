@@ -6,7 +6,7 @@ SRC     = $(wildcard src/*.c)
 OBJ     = $(SRC:src/%.c=build/%.o)
 BIN     = bin/tinyvm
 
-.PHONY: all clean
+.PHONY: all clean fmt
 
 all: $(BIN)
 
@@ -21,6 +21,9 @@ bin:
 
 build:
 	mkdir -p build
+
+fmt:
+	clang-format -i src/*.c include/*.h
 
 clean:
 	rm -rf build bin

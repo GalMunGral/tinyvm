@@ -1,0 +1,6 @@
+BasedOnStyle: LLVM
+ColumnLimit: 100
+PointerAlignment: Right
+AlignConsecutiveDeclarations: true
+AlignConsecutiveAssignments: true
+SortIncludes: false
