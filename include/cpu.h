@@ -9,5 +9,5 @@ typedef struct CPU CPU;
 
 CPU *cpu_create(void);
 void cpu_destroy(CPU *cpu);
-void cpu_step(CPU *cpu, Memory *mem);
+void cpu_step(CPU *cpu, const Memory *mem);
 void cpu_dump(const CPU *cpu);
