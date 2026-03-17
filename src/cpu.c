@@ -861,7 +861,13 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
   }
 
   case OP_SYSTEM:
-    fprintf(stderr, "SYSTEM instruction at pc=0x%llx (ecall/ebreak not yet implemented)\n", pc);
+    if (imm == 1) { // ebreak — dump state and halt cleanly
+      cpu->pc = pc;
+      cpu_dump(cpu);
+      exit(0);
+    }
+    // ecall — syscall handling not yet implemented
+    fprintf(stderr, "ecall at pc=0x%llx (syscalls not yet implemented)\n", pc);
     exit(1);
 
   default:

@@ -2,3 +2,5 @@ build/
 bin/
 .idea/
 *.o
+tests/*.elf
+tests/*.bin
