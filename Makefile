@@ -30,6 +30,10 @@ tests/%.bin: tests/%.s
 	$(RV_GCC) $(RVFLAGS) $< -o tests/$*.elf
 	$(RV_COPY) -O binary tests/$*.elf tests/$*.bin
 
+tests/%.bin: tests/start.s tests/%.c
+	$(RV_GCC) $(RVFLAGS) -ffreestanding -O1 $^ -o tests/$*.elf
+	$(RV_COPY) -O binary tests/$*.elf tests/$*.bin
+
 fmt:
 	clang-format -i src/*.c include/*.h
 
