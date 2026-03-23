@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "clint.h"
 #include "cpu.h"
 #include "elf.h"
 #include "memory.h"
@@ -16,6 +17,7 @@ int main(int argc, char *argv[]) {
   Memory *mem = mem_create();
   mem_add_region(mem, RAM_BASE, RAM_SIZE);
   uart_init(mem);
+  clint_init(mem);
 
   CPU *cpu = cpu_create();
 
@@ -24,6 +26,7 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "failed to load %s\n", argv[1]);
     return 1;
   }
+
   cpu->pc = entry;
 
   while (1)

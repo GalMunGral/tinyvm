@@ -1032,10 +1032,12 @@ static void execute_trap_return(CPU *cpu, u64 pc, i64 imm) {
 // Trap handling
 // ---------------------------------------------------------------------------
 static void cpu_trap(CPU *cpu, u64 cause, u64 tval) {
-  // Delegate to S-mode if we're not already in M-mode and medeleg has this cause's bit set
-  // (cause & 0x3F strips the interrupt bit from the top, giving the raw cause index)
-  bool to_s =
-      (cpu->privilege <= PRIV_S) && (csr_read(cpu, CSR_MEDELEG) & ((u64)1 << (cause & 0x3F)));
+  // Bit 63 distinguishes interrupts from exceptions; each uses its own delegation CSR
+  bool is_interrupt = (cause >> 63) != 0;
+  u32  deleg_csr    = is_interrupt ? CSR_MIDELEG : CSR_MEDELEG;
+  u64  cause_idx    = cause & 0x3F; // strip interrupt bit for delegation lookup
+
+  bool to_s = (cpu->privilege <= PRIV_S) && (csr_read(cpu, deleg_csr) & ((u64)1 << cause_idx));
 
   if (to_s) {
     csr_write(cpu, CSR_SEPC, cpu->pc);
@@ -1086,6 +1088,59 @@ static void cpu_trap(CPU *cpu, u64 cause, u64 tval) {
 }
 
 // ---------------------------------------------------------------------------
+// Interrupt sources and delivery
+// ---------------------------------------------------------------------------
+#define MAX_IRQ_SOURCES 8
+static IrqSourceFn s_irq_sources[MAX_IRQ_SOURCES];
+static int         s_irq_source_count = 0;
+
+void cpu_add_irq_source(IrqSourceFn fn) {
+  if (s_irq_source_count < MAX_IRQ_SOURCES)
+    s_irq_sources[s_irq_source_count++] = fn;
+}
+
+void cpu_raise_irq(CPU *cpu, u64 bit) { cpu->csrs[CSR_MIP] |= bit; }
+void cpu_lower_irq(CPU *cpu, u64 bit) { cpu->csrs[CSR_MIP] &= ~bit; }
+
+// Poll all registered IRQ sources, then deliver the highest-priority pending interrupt.
+// Returns true if a trap was taken (caller should skip instruction fetch).
+static bool cpu_check_interrupts(CPU *cpu) {
+  for (int i = 0; i < s_irq_source_count; i++)
+    s_irq_sources[i](cpu);
+
+  u64 pending = cpu->csrs[CSR_MIP] & cpu->csrs[CSR_MIE];
+  if (!pending)
+    return false;
+
+  u64 status = cpu->csrs[CSR_MSTATUS];
+
+  // Non-delegated: deliver in M-mode (fires if MIE set, or we're below M-mode)
+  u64 m_pending = pending & ~cpu->csrs[CSR_MIDELEG];
+  if (m_pending && (cpu->privilege < PRIV_M || (status & MSTATUS_MIE))) {
+    for (int bit = 11; bit >= 0; bit--) {
+      if (m_pending & ((u64)1 << bit)) {
+        cpu_trap(cpu, ((u64)1 << 63) | (u64)bit, 0);
+        return true;
+      }
+    }
+  }
+
+  // Delegated: deliver in S-mode (fires if SIE set, or we're in U-mode)
+  u64 s_pending = pending & cpu->csrs[CSR_MIDELEG];
+  if (s_pending &&
+      (cpu->privilege == PRIV_U || (cpu->privilege == PRIV_S && (status & MSTATUS_SIE)))) {
+    for (int bit = 9; bit >= 0; bit--) {
+      if (s_pending & ((u64)1 << bit)) {
+        cpu_trap(cpu, ((u64)1 << 63) | (u64)bit, 0);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 CPU *cpu_create(void) {
@@ -1109,6 +1164,8 @@ CPU *cpu_create(void) {
 void cpu_destroy(CPU *cpu) { free(cpu); }
 
 void cpu_step(CPU *cpu, const Memory *mem) {
+  if (cpu_check_interrupts(cpu))
+    return;
   u32         raw  = mem_read32(mem, cpu->pc);
   Instruction inst = decode(raw);
   execute(cpu, mem, inst);

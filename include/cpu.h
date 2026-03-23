@@ -44,6 +44,14 @@
 // MPP is a 2-bit field at bits 12:11 — previous privilege before M-mode trap (0=U, 1=S, 3=M)
 #define MSTATUS_MPP_SHIFT 11
 
+// mip/mie bit positions (same indices used in both registers)
+#define MIP_SSIP (1ULL << 1)  // S-mode software interrupt
+#define MIP_MSIP (1ULL << 3)  // M-mode software interrupt
+#define MIP_STIP (1ULL << 5)  // S-mode timer interrupt
+#define MIP_MTIP (1ULL << 7)  // M-mode timer interrupt (set by CLINT hardware)
+#define MIP_SEIP (1ULL << 9)  // S-mode external interrupt
+#define MIP_MEIP (1ULL << 11) // M-mode external interrupt
+
 typedef struct CPU {
   u64 regs[NUM_REGS];
   u64 fregs[NUM_REGS];
@@ -56,3 +64,13 @@ typedef struct CPU {
 CPU *cpu_create(void);
 void cpu_destroy(CPU *cpu);
 void cpu_step(CPU *cpu, const Memory *mem);
+
+// Raise/lower an interrupt line — the hardware-model contract for peripherals
+void cpu_raise_irq(CPU *cpu, u64 bit);
+void cpu_lower_irq(CPU *cpu, u64 bit);
+
+// Register a per-step poll callback — emulation artifact for time-varying peripherals (e.g. CLINT)
+// In real hardware these peripherals have dedicated comparison logic running continuously;
+// in our emulator we approximate that by calling the source function every cpu_step.
+typedef void (*IrqSourceFn)(CPU *cpu);
+void cpu_add_irq_source(IrqSourceFn fn);
