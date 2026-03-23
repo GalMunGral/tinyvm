@@ -88,6 +88,17 @@
 
 // funct7 — alternate for integer ops
 #define F7_ALT 0x20
+#define F7_MEXT 0x01 // M extension (multiply/divide)
+
+// funct3 — M extension
+#define F3_MUL 0x0    // signed multiply, lower 64 bits
+#define F3_MULH 0x1   // signed * signed, upper 64 bits of 128-bit product
+#define F3_MULHSU 0x2 // signed * unsigned, upper 64 bits
+#define F3_MULHU 0x3  // unsigned * unsigned, upper 64 bits
+#define F3_DIV 0x4    // signed division
+#define F3_DIVU 0x5   // unsigned division
+#define F3_REM 0x6    // signed remainder
+#define F3_REMU 0x7   // unsigned remainder
 
 // ---------------------------------------------------------------------------
 // funct5 for OP_FP (bits[31:27] = funct7 >> 2)
@@ -113,19 +124,19 @@
 // ---------------------------------------------------------------------------
 // Structs
 // ---------------------------------------------------------------------------
-struct CPU {
-  u64 regs[NUM_REGS];  // integer registers x0-x31
-  u64 fregs[NUM_REGS]; // float registers f0-f31, 64-bit wide
-  u32 fcsr;            // float control/status: rounding mode + exception flags
-  u64 pc;
-};
-
 typedef struct {
   u32 opcode;
   u32 rd, rs1, rs2;
   u32 funct3, funct7;
   i64 imm;
 } Instruction;
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Forward declarations
+// ---------------------------------------------------------------------------
+static void cpu_trap(CPU *cpu, u64 cause, u64 tval);
+static void execute_trap_return(CPU *cpu, u64 pc, i64 imm);
 
 // ---------------------------------------------------------------------------
 // Helpers — integer
@@ -138,6 +149,17 @@ static i64 sign_extend(u64 val, int bits) {
 static void reg_write(CPU *cpu, u32 rd, u64 val) {
   if (rd != 0)
     cpu->regs[rd] = val;
+}
+
+static u64 csr_read(const CPU *cpu, u32 addr) {
+  // TODO: handle sstatus as a restricted view of mstatus when privilege levels are added
+  return cpu->csrs[addr];
+}
+
+static void csr_write(CPU *cpu, u32 addr, u64 val) {
+  // TODO: handle sstatus/mstatus aliasing and write side effects (e.g. mip, satp) when privilege
+  // levels are added
+  cpu->csrs[addr] = val;
 }
 
 // ---------------------------------------------------------------------------
@@ -679,35 +701,67 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
   case OP_R_ARITH: {
     u64 val   = 0;
     u32 shamt = (u32)rs2 & 0x3F;
-    switch (inst.funct3) {
-    case F3_ADD_SUB:
-      val = inst.funct7 == F7_ALT ? rs1 - rs2 : rs1 + rs2; // ADD/SUB
-      break;
-    case F3_SLL:
-      val = rs1 << shamt;
-      break; // SLL
-    case F3_SLT:
-      val = (i64)rs1 < (i64)rs2 ? 1 : 0;
-      break; // SLT
-    case F3_SLTU:
-      val = rs1 < rs2 ? 1 : 0;
-      break; // SLTU
-    case F3_XOR:
-      val = rs1 ^ rs2;
-      break; // XOR
-    case F3_SRL_SRA:
-      val = inst.funct7 == F7_ALT ? (u64)((i64)rs1 >> shamt) // SRA
-                                  : rs1 >> shamt;            // SRL
-      break;
-    case F3_OR:
-      val = rs1 | rs2;
-      break; // OR
-    case F3_AND:
-      val = rs1 & rs2;
-      break; // AND
-    default:
-      fprintf(stderr, "unknown R-arith funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
-      exit(1);
+    if (inst.funct7 == F7_MEXT) { // M extension — multiply/divide
+      switch (inst.funct3) {
+      case F3_MUL:
+        val = rs1 * rs2;
+        break;
+      case F3_MULH:
+        val = (u64)(((i128)rs1 * (i128)rs2) >> 64);
+        break;
+      case F3_MULHSU:
+        val = (u64)(((i128)rs1 * (u128)rs2) >> 64);
+        break;
+      case F3_MULHU:
+        val = (u64)(((u128)rs1 * (u128)rs2) >> 64);
+        break;
+      case F3_DIV:
+        val = rs2 == 0 ? (u64)-1 : (u64)((i64)rs1 / (i64)rs2);
+        break;
+      case F3_DIVU:
+        val = rs2 == 0 ? (u64)-1 : rs1 / rs2;
+        break;
+      case F3_REM:
+        val = rs2 == 0 ? rs1 : (u64)((i64)rs1 % (i64)rs2);
+        break;
+      case F3_REMU:
+        val = rs2 == 0 ? rs1 : rs1 % rs2;
+        break;
+      default:
+        fprintf(stderr, "unknown M-ext funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
+        exit(1);
+      }
+    } else {
+      switch (inst.funct3) {
+      case F3_ADD_SUB:
+        val = inst.funct7 == F7_ALT ? rs1 - rs2 : rs1 + rs2; // ADD/SUB
+        break;
+      case F3_SLL:
+        val = rs1 << shamt;
+        break; // SLL
+      case F3_SLT:
+        val = (i64)rs1 < (i64)rs2 ? 1 : 0;
+        break; // SLT
+      case F3_SLTU:
+        val = rs1 < rs2 ? 1 : 0;
+        break; // SLTU
+      case F3_XOR:
+        val = rs1 ^ rs2;
+        break; // XOR
+      case F3_SRL_SRA:
+        val = inst.funct7 == F7_ALT ? (u64)((i64)rs1 >> shamt) // SRA
+                                    : rs1 >> shamt;            // SRL
+        break;
+      case F3_OR:
+        val = rs1 | rs2;
+        break; // OR
+      case F3_AND:
+        val = rs1 & rs2;
+        break; // AND
+      default:
+        fprintf(stderr, "unknown R-arith funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
+        exit(1);
+      }
     }
     reg_write(cpu, inst.rd, val);
     break;
@@ -861,14 +915,44 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
   }
 
   case OP_SYSTEM:
-    if (imm == 1) { // ebreak — dump state and halt cleanly
-      cpu->pc = pc;
-      cpu_dump(cpu);
-      exit(0);
+    if (inst.funct3 == 0) {
+      execute_trap_return(cpu, pc, imm);
+      return; // pc already updated
+    } else {
+      // CSR instructions — funct3 encodes the operation
+      u32 csr_addr = (u32)(inst.imm & 0xFFF);
+      u32 min_priv = (csr_addr >> 8) & 0x3; // bits[9:8] encode minimum privilege level
+      if (cpu->privilege < min_priv) {
+        cpu->pc = pc;
+        cpu_trap(cpu, 2, 0); // illegal instruction
+        return;
+      }
+      u64 old_val = csr_read(cpu, csr_addr);
+      u64 src     = (inst.funct3 & 0x4) ? inst.rs1 : cpu->regs[inst.rs1]; // immediate vs register
+      u64 new_val;
+
+      switch (inst.funct3 & 0x3) {
+      case 0x1:
+        new_val = src;
+        break; // csrrw / csrrwi
+      case 0x2:
+        new_val = old_val | src;
+        break; // csrrs / csrrsi
+      case 0x3:
+        new_val = old_val & ~src;
+        break; // csrrc / csrrci
+      default:
+        new_val = old_val;
+        break;
+      }
+
+      // for csrrs/csrrc, skip write if src is zero (no side effects)
+      if ((inst.funct3 & 0x3) == 0x1 || src != 0)
+        csr_write(cpu, csr_addr, new_val);
+
+      reg_write(cpu, inst.rd, old_val);
     }
-    // ecall — syscall handling not yet implemented
-    fprintf(stderr, "ecall at pc=0x%llx (syscalls not yet implemented)\n", pc);
-    exit(1);
+    break;
 
   default:
     fprintf(stderr, "unknown opcode 0x%02x at pc=0x%llx\n", inst.opcode, pc);
@@ -879,12 +963,143 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
 }
 
 // ---------------------------------------------------------------------------
+// Trap-return and environment instructions (funct3 == 0 in OP_SYSTEM)
+// ---------------------------------------------------------------------------
+static void execute_trap_return(CPU *cpu, u64 pc, i64 imm) {
+  switch (imm) {
+  case 0x0: { // ecall
+    // Cause = 8 + privilege: U=8, S=9, M=11.
+    // Works because PRIV_U=0, PRIV_S=1, PRIV_M=3 and the spec assigns
+    // ecall causes 8, 9, 11 — the gap at 10 coincides with the gap between S(1) and M(3).
+    cpu->pc = pc;
+    cpu_trap(cpu, 8 + cpu->privilege, 0);
+    break;
+  }
+  case 0x1: // ebreak — halt
+    exit(0);
+
+  case 0x102: { // sret — requires S-mode or higher
+    if (cpu->privilege < PRIV_S) {
+      cpu->pc = pc;
+      cpu_trap(cpu, 2, 0);
+      break;
+    }
+    u64 status = csr_read(cpu, CSR_MSTATUS);
+
+    // restore privilege from SPP, then clear SPP
+    cpu->privilege = (status & MSTATUS_SPP) ? PRIV_S : PRIV_U;
+    status &= ~MSTATUS_SPP;
+
+    // restore SIE from SPIE, then set SPIE
+    status &= ~MSTATUS_SIE;
+    if (status & MSTATUS_SPIE)
+      status |= MSTATUS_SIE;
+    status |= MSTATUS_SPIE;
+
+    csr_write(cpu, CSR_MSTATUS, status);
+    cpu->pc = csr_read(cpu, CSR_SEPC);
+    break;
+  }
+  case 0x302: { // mret — requires M-mode
+    if (cpu->privilege < PRIV_M) {
+      cpu->pc = pc;
+      cpu_trap(cpu, 2, 0);
+      break;
+    }
+    u64 status = csr_read(cpu, CSR_MSTATUS);
+
+    // restore privilege from MPP, then clear MPP to U(0)
+    cpu->privilege = (status >> MSTATUS_MPP_SHIFT) & 0x3;
+    status &= ~((u64)0x3 << MSTATUS_MPP_SHIFT);
+
+    // restore MIE from MPIE, then set MPIE
+    status &= ~MSTATUS_MIE;
+    if (status & MSTATUS_MPIE)
+      status |= MSTATUS_MIE;
+    status |= MSTATUS_MPIE;
+
+    csr_write(cpu, CSR_MSTATUS, status);
+    cpu->pc = csr_read(cpu, CSR_MEPC);
+    break;
+  }
+  default:
+    fprintf(stderr, "unknown SYSTEM imm=0x%llx at pc=0x%llx\n", (u64)imm, pc);
+    exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Trap handling
+// ---------------------------------------------------------------------------
+static void cpu_trap(CPU *cpu, u64 cause, u64 tval) {
+  // Delegate to S-mode if we're not already in M-mode and medeleg has this cause's bit set
+  // (cause & 0x3F strips the interrupt bit from the top, giving the raw cause index)
+  bool to_s =
+      (cpu->privilege <= PRIV_S) && (csr_read(cpu, CSR_MEDELEG) & ((u64)1 << (cause & 0x3F)));
+
+  if (to_s) {
+    csr_write(cpu, CSR_SEPC, cpu->pc);
+    csr_write(cpu, CSR_SCAUSE, cause);
+    csr_write(cpu, CSR_STVAL, tval);
+
+    u64 status = csr_read(cpu, CSR_MSTATUS);
+
+    // save SIE into SPIE
+    status &= ~MSTATUS_SPIE;
+    if (status & MSTATUS_SIE)
+      status |= MSTATUS_SPIE;
+
+    // clear SIE
+    status &= ~MSTATUS_SIE;
+
+    // save current privilege into SPP (1 bit: 0=U, 1=S)
+    status &= ~MSTATUS_SPP;
+    if (cpu->privilege == PRIV_S)
+      status |= MSTATUS_SPP;
+
+    csr_write(cpu, CSR_MSTATUS, status);
+    cpu->privilege = PRIV_S;
+    cpu->pc        = csr_read(cpu, CSR_STVEC) & ~(u64)0x3;
+  } else {
+    csr_write(cpu, CSR_MEPC, cpu->pc);
+    csr_write(cpu, CSR_MCAUSE, cause);
+    csr_write(cpu, CSR_MTVAL, tval);
+
+    u64 status = csr_read(cpu, CSR_MSTATUS);
+
+    // save MIE into MPIE
+    status &= ~MSTATUS_MPIE;
+    if (status & MSTATUS_MIE)
+      status |= MSTATUS_MPIE;
+
+    // clear MIE
+    status &= ~MSTATUS_MIE;
+
+    // save current privilege into MPP (2-bit field at MSTATUS_MPP_SHIFT)
+    status &= ~((u64)0x3 << MSTATUS_MPP_SHIFT);
+    status |= (u64)cpu->privilege << MSTATUS_MPP_SHIFT;
+
+    csr_write(cpu, CSR_MSTATUS, status);
+    cpu->privilege = PRIV_M;
+    cpu->pc        = csr_read(cpu, CSR_MTVEC) & ~(u64)0x3;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 CPU *cpu_create(void) {
   CPU *cpu = calloc(1, sizeof(CPU));
   if (!cpu)
     return NULL;
+
+  // Real hardware resets in M-mode. We start there too, then delegate all
+  // standard exceptions and interrupts to S-mode so Linux (running in S-mode)
+  // can handle its own traps without going through firmware on every ecall/fault.
+  cpu->privilege         = PRIV_M;
+  cpu->csrs[CSR_MEDELEG] = 0xFFFF; // delegate all exceptions to S-mode
+  cpu->csrs[CSR_MIDELEG] = 0xFFFF; // delegate all interrupts to S-mode
+
   cpu->pc       = 0x80000000;
   cpu->regs[10] = 0; // a0 = hart ID
   cpu->regs[11] = 0; // a1 = DTB address (none yet)
@@ -897,22 +1112,4 @@ void cpu_step(CPU *cpu, const Memory *mem) {
   u32         raw  = mem_read32(mem, cpu->pc);
   Instruction inst = decode(raw);
   execute(cpu, mem, inst);
-}
-
-void cpu_dump(const CPU *cpu) {
-  static const char *reg_names[NUM_REGS] = {
-      "zero", "ra", "sp", "gp", "tp",  "t0",  "t1", "t2", "s0", "s1", "a0",
-      "a1",   "a2", "a3", "a4", "a5",  "a6",  "a7", "s2", "s3", "s4", "s5",
-      "s6",   "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6",
-  };
-  printf("pc   = 0x%016llx\n", cpu->pc);
-  printf("-- integer registers --\n");
-  for (int i = 0; i < NUM_REGS; i++)
-    printf("%-4s = 0x%016llx%s", reg_names[i], cpu->regs[i], (i % 4 == 3) ? "\n" : "  ");
-  printf("-- float registers --\n");
-  for (int i = 0; i < NUM_REGS; i++) {
-    double d;
-    memcpy(&d, &cpu->fregs[i], sizeof(double));
-    printf("f%-3d = 0x%016llx (%g)%s", i, cpu->fregs[i], d, (i % 2 == 1) ? "\n" : "  ");
-  }
 }

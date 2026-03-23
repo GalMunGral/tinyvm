@@ -7,8 +7,7 @@ OBJ     = $(SRC:src/%.c=build/%.o)
 BIN     = bin/tinyvm
 
 RV_GCC  = riscv64-elf-gcc
-RV_COPY = riscv64-elf-objcopy
-RVFLAGS = -nostdlib -march=rv64ifd -mabi=lp64d -Ttext=0x80000000
+RVFLAGS = -nostdlib -march=rv64imafd -mabi=lp64d -mcmodel=medany -Ttext=0x80000000
 
 .PHONY: all clean fmt
 
@@ -26,16 +25,14 @@ bin:
 build:
 	mkdir -p build
 
-tests/%.bin: tests/%.s
-	$(RV_GCC) $(RVFLAGS) $< -o tests/$*.elf
-	$(RV_COPY) -O binary tests/$*.elf tests/$*.bin
+tests/%.elf: tests/%.s
+	$(RV_GCC) $(RVFLAGS) $< -o $@
 
-tests/%.bin: tests/start.s tests/%.c
-	$(RV_GCC) $(RVFLAGS) -ffreestanding -O1 $^ -o tests/$*.elf
-	$(RV_COPY) -O binary tests/$*.elf tests/$*.bin
+tests/%.elf: tests/start.s tests/%.c
+	$(RV_GCC) $(RVFLAGS) -ffreestanding -O1 $^ -o $@
 
 fmt:
 	clang-format -i src/*.c include/*.h
 
 clean:
-	rm -rf build bin
+	rm -rf build bin tests/*.elf
