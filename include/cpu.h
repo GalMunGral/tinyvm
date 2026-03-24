@@ -7,9 +7,7 @@
 #define NUM_CSRS 4096
 
 // Privilege levels
-#define PRIV_U 0
-#define PRIV_S 1
-#define PRIV_M 3
+typedef enum { PRIV_U = 0, PRIV_S = 1, PRIV_M = 3 } Privilege;
 
 // CSR addresses — machine mode
 #define CSR_MSTATUS 0x300
@@ -53,17 +51,18 @@
 #define MIP_MEIP (1ULL << 11) // M-mode external interrupt
 
 typedef struct CPU {
-  u64 regs[NUM_REGS];
-  u64 fregs[NUM_REGS];
-  u32 fcsr;
-  u64 pc;
-  u64 csrs[NUM_CSRS];
-  u8  privilege;
+  u64       regs[NUM_REGS];
+  u64       fregs[NUM_REGS];
+  u32       fcsr;
+  u64       pc;
+  u64       csrs[NUM_CSRS];
+  Privilege privilege;
 } CPU;
 
 CPU *cpu_create(void);
 void cpu_destroy(CPU *cpu);
 void cpu_step(CPU *cpu, const Memory *mem);
+void cpu_trap(CPU *cpu, u64 cause, u64 tval);
 
 // Raise/lower an interrupt line — the hardware-model contract for peripherals
 void cpu_raise_irq(CPU *cpu, u64 bit);

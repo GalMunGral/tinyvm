@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cpu.h"
+#include "mmu.h"
 
 // ---------------------------------------------------------------------------
 // Opcodes (bits[6:0])
@@ -135,7 +136,6 @@ typedef struct {
 // ---------------------------------------------------------------------------
 // Forward declarations
 // ---------------------------------------------------------------------------
-static void cpu_trap(CPU *cpu, u64 cause, u64 tval);
 static void execute_trap_return(CPU *cpu, u64 pc, i64 imm);
 
 // ---------------------------------------------------------------------------
@@ -607,29 +607,32 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
   }
 
   case OP_LOAD: {
-    u64 addr = rs1 + (u64)imm;
-    u64 val  = 0;
+    u64 va = rs1 + (u64)imm;
+    u64 pa = mmu_translate(cpu, mem, va, MMU_LOAD);
+    if (pa == MMU_FAULT)
+      return;
+    u64 val = 0;
     switch (inst.funct3) {
     case F3_LB:
-      val = (u64)(i64)(i8)mem_read8(mem, addr);
+      val = (u64)(i64)(i8)mem_read8(mem, pa);
       break;
     case F3_LH:
-      val = (u64)(i64)(i16)mem_read16(mem, addr);
+      val = (u64)(i64)(i16)mem_read16(mem, pa);
       break;
     case F3_LW:
-      val = (u64)(i64)(i32)mem_read32(mem, addr);
+      val = (u64)(i64)(i32)mem_read32(mem, pa);
       break;
     case F3_LD:
-      val = mem_read64(mem, addr);
+      val = mem_read64(mem, pa);
       break;
     case F3_LBU:
-      val = (u64)mem_read8(mem, addr);
+      val = (u64)mem_read8(mem, pa);
       break;
     case F3_LHU:
-      val = (u64)mem_read16(mem, addr);
+      val = (u64)mem_read16(mem, pa);
       break;
     case F3_LWU:
-      val = (u64)mem_read32(mem, addr);
+      val = (u64)mem_read32(mem, pa);
       break;
     default:
       fprintf(stderr, "unknown load funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
@@ -640,19 +643,22 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
   }
 
   case OP_STORE: {
-    u64 addr = rs1 + (u64)imm;
+    u64 va = rs1 + (u64)imm;
+    u64 pa = mmu_translate(cpu, mem, va, MMU_STORE);
+    if (pa == MMU_FAULT)
+      return;
     switch (inst.funct3) {
     case F3_SB:
-      mem_write8(mem, addr, (u8)rs2);
+      mem_write8(mem, pa, (u8)rs2);
       break;
     case F3_SH:
-      mem_write16(mem, addr, (u16)rs2);
+      mem_write16(mem, pa, (u16)rs2);
       break;
     case F3_SW:
-      mem_write32(mem, addr, (u32)rs2);
+      mem_write32(mem, pa, (u32)rs2);
       break;
     case F3_SD:
-      mem_write64(mem, addr, rs2);
+      mem_write64(mem, pa, rs2);
       break;
     default:
       fprintf(stderr, "unknown store funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
@@ -818,13 +824,15 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
   // Float loads
   // -------------------------------------------------------------------------
   case OP_FLW_FLD: {
-    u64 addr = rs1 + (u64)imm;
+    u64 va = rs1 + (u64)imm;
+    u64 pa = mmu_translate(cpu, mem, va, MMU_LOAD);
+    if (pa == MMU_FAULT)
+      return;
     if (inst.funct3 == F3_FLW_FSW) {
-      u32 bits = mem_read32(mem, addr);
+      u32 bits = mem_read32(mem, pa);
       memcpy(&cpu->fregs[inst.rd], &bits, 4);
     } else { // FLD
-      u64 bits            = mem_read64(mem, addr);
-      cpu->fregs[inst.rd] = bits;
+      cpu->fregs[inst.rd] = mem_read64(mem, pa);
     }
     break;
   }
@@ -833,13 +841,16 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
   // Float stores
   // -------------------------------------------------------------------------
   case OP_FSW_FSD: {
-    u64 addr = rs1 + (u64)imm;
+    u64 va = rs1 + (u64)imm;
+    u64 pa = mmu_translate(cpu, mem, va, MMU_STORE);
+    if (pa == MMU_FAULT)
+      return;
     if (inst.funct3 == F3_FLW_FSW) {
       u32 bits;
       memcpy(&bits, &cpu->fregs[inst.rs2], 4);
-      mem_write32(mem, addr, bits);
+      mem_write32(mem, pa, bits);
     } else { // FSD
-      mem_write64(mem, addr, cpu->fregs[inst.rs2]);
+      mem_write64(mem, pa, cpu->fregs[inst.rs2]);
     }
     break;
   }
@@ -1031,7 +1042,7 @@ static void execute_trap_return(CPU *cpu, u64 pc, i64 imm) {
 // ---------------------------------------------------------------------------
 // Trap handling
 // ---------------------------------------------------------------------------
-static void cpu_trap(CPU *cpu, u64 cause, u64 tval) {
+void cpu_trap(CPU *cpu, u64 cause, u64 tval) {
   // Bit 63 distinguishes interrupts from exceptions; each uses its own delegation CSR
   bool is_interrupt = (cause >> 63) != 0;
   u32  deleg_csr    = is_interrupt ? CSR_MIDELEG : CSR_MEDELEG;
@@ -1166,7 +1177,10 @@ void cpu_destroy(CPU *cpu) { free(cpu); }
 void cpu_step(CPU *cpu, const Memory *mem) {
   if (cpu_check_interrupts(cpu))
     return;
-  u32         raw  = mem_read32(mem, cpu->pc);
+  u64 pc_pa = mmu_translate(cpu, mem, cpu->pc, MMU_FETCH);
+  if (pc_pa == MMU_FAULT)
+    return;
+  u32         raw  = mem_read32(mem, pc_pa);
   Instruction inst = decode(raw);
   execute(cpu, mem, inst);
 }
