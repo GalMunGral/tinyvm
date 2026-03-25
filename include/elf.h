@@ -1,7 +1,8 @@
 #pragma once
 
-#include "types.h"
+#include "cpu.h"
 #include "memory.h"
+#include "types.h"
 
 // ELF64 magic
 #define ELF_MAGIC                                                                                  \
@@ -33,3 +34,7 @@ typedef struct {
 // Load an ELF64 binary into guest memory.
 // Returns the entry point address, or (u64)-1 on failure.
 u64 elf_load(Memory *mem, const char *path);
+
+// Load an ELF64 binary and set cpu->pc to its entry point.
+// Returns 0 on success, -1 on failure.
+int elf_boot(Memory *mem, CPU *cpu, const char *path);

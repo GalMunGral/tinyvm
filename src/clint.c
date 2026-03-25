@@ -20,36 +20,29 @@ static void clint_irq_source(CPU *cpu) {
     cpu_lower_irq(cpu, MIP_MTIP);
 }
 
-static u64 mtime_read(MemRegion *r, u64 offset, size_t width) {
+static u64 clint_read(MemRegion *r, u64 offset, size_t width) {
   (void)r;
-  (void)offset;
   (void)width;
-  return get_mtime();
+  if (offset == CLINT_MTIME_OFF)
+    return get_mtime();
+  if (offset == CLINT_MTIMECMP_OFF)
+    return s_mtimecmp;
+  return 0;
 }
 
-static void mtime_write(MemRegion *r, u64 offset, u64 val, size_t width) {
+static void clint_write(MemRegion *r, u64 offset, u64 val, size_t width) {
   (void)r;
-  (void)offset;
-  (void)val;
-  (void)width; // mtime is read-only
+  (void)width;
+  if (offset == CLINT_MTIMECMP_OFF)
+    s_mtimecmp = val;
+  // mtime is read-only — writes ignored
 }
 
-static u64 mtimecmp_read(MemRegion *r, u64 offset, size_t width) {
-  (void)r;
-  (void)offset;
-  (void)width;
-  return s_mtimecmp;
-}
-
-static void mtimecmp_write(MemRegion *r, u64 offset, u64 val, size_t width) {
-  (void)r;
-  (void)offset;
-  (void)width;
+void clint_set_timecmp(const u64 val) {
   s_mtimecmp = val;
 }
 
 void clint_init(Memory *mem) {
   cpu_add_irq_source(clint_irq_source);
-  mem_add_device(mem, CLINT_MTIME_BASE, 8, mtime_read, mtime_write);
-  mem_add_device(mem, CLINT_MTIMECMP_BASE, 8, mtimecmp_read, mtimecmp_write);
+  mem_add_device(mem, CLINT_BASE, CLINT_SIZE, clint_read, clint_write);
 }

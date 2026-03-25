@@ -1,4 +1,5 @@
 #include "mmu.h"
+#include "trap.h"
 
 // ---------------------------------------------------------------------------
 // Page table geometry
@@ -33,12 +34,9 @@
 // ---------------------------------------------------------------------------
 static u32 fault_cause(MmuAccess access) {
   switch (access) {
-  case MMU_FETCH:
-    return 12;
-  case MMU_STORE:
-    return 15;
-  default:
-    return 13; // MMU_LOAD
+  case MMU_FETCH: return EXC_CAUSE_FETCH_PAGE_FAULT;
+  case MMU_STORE: return EXC_CAUSE_STORE_PAGE_FAULT;
+  default:        return EXC_CAUSE_LOAD_PAGE_FAULT;
   }
 }
 

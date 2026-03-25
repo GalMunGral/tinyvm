@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "cpu.h"
 #include "elf.h"
 
 u64 elf_load(Memory *mem, const char *path) {
@@ -58,4 +59,11 @@ u64 elf_load(Memory *mem, const char *path) {
   u64 entry = ehdr->entry;
   free(data);
   return entry;
+}
+
+int elf_boot(Memory *mem, CPU *cpu, const char *path) {
+  u64 entry = elf_load(mem, path);
+  if (entry == (u64)-1) return -1;
+  cpu->pc = entry;
+  return 0;
 }

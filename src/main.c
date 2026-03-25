@@ -1,16 +1,29 @@
 #include <stdio.h>
+#include <string.h>
 #include "clint.h"
 #include "cpu.h"
 #include "elf.h"
+#include "linux_boot.h"
 #include "memory.h"
 #include "uart.h"
 
 #define RAM_BASE 0x7f000000ULL
 #define RAM_SIZE (256 * 1024 * 1024) // 256MB, covers 0x7f000000–0x8f000000
 
+static int boot(Memory *mem, CPU *cpu, const char *mode, const char *binary) {
+  if (strcmp(mode, "linux") == 0)
+    return linux_boot(mem, cpu, binary, "dtb/tinyvm.dtb");
+  if (strcmp(mode, "elf") == 0)
+    return elf_boot(mem, cpu, binary);
+  fprintf(stderr, "unknown mode: %s\n", mode);
+  return -1;
+}
+
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
-    fprintf(stderr, "usage: tinyvm <elf>\n");
+  if (argc < 3) {
+    fprintf(stderr, "usage: tinyvm <mode> <binary>\n");
+    fprintf(stderr, "  linux <kernel.elf>  -- load kernel + DTB, Linux boot convention\n");
+    fprintf(stderr, "  elf   <binary.elf>  -- load ELF and jump to entry\n");
     return 1;
   }
 
@@ -21,14 +34,9 @@ int main(int argc, char *argv[]) {
 
   CPU *cpu = cpu_create();
 
-  u64 entry = elf_load(mem, argv[1]);
-  if (entry == (u64)-1) {
-    fprintf(stderr, "failed to load %s\n", argv[1]);
+  if (boot(mem, cpu, argv[1], argv[2]) != 0)
     return 1;
-  }
 
-  cpu->pc = entry;
-
-  while (1)
+  while (!cpu->halted)
     cpu_step(cpu, mem);
 }

@@ -4,6 +4,7 @@
 #include <string.h>
 #include "cpu.h"
 #include "mmu.h"
+#include "sbi.h"
 
 // ---------------------------------------------------------------------------
 // Opcodes (bits[6:0])
@@ -136,7 +137,7 @@ typedef struct {
 // ---------------------------------------------------------------------------
 // Forward declarations
 // ---------------------------------------------------------------------------
-static void execute_trap_return(CPU *cpu, u64 pc, i64 imm);
+static void execute_trap_return(CPU *cpu, const Memory *mem, i64 imm);
 
 // ---------------------------------------------------------------------------
 // Helpers — integer
@@ -927,7 +928,7 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
 
   case OP_SYSTEM:
     if (inst.funct3 == 0) {
-      execute_trap_return(cpu, pc, imm);
+      execute_trap_return(cpu, mem, imm);
       return; // pc already updated
     } else {
       // CSR instructions — funct3 encodes the operation
@@ -935,7 +936,7 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
       u32 min_priv = (csr_addr >> 8) & 0x3; // bits[9:8] encode minimum privilege level
       if (cpu->privilege < min_priv) {
         cpu->pc = pc;
-        cpu_trap(cpu, 2, 0); // illegal instruction
+        cpu_trap(cpu, EXC_CAUSE_ILLEGAL_INSTR, 0);
         return;
       }
       u64 old_val = csr_read(cpu, csr_addr);
@@ -976,14 +977,14 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
 // ---------------------------------------------------------------------------
 // Trap-return and environment instructions (funct3 == 0 in OP_SYSTEM)
 // ---------------------------------------------------------------------------
-static void execute_trap_return(CPU *cpu, u64 pc, i64 imm) {
+static void execute_trap_return(CPU *cpu, const Memory *mem, i64 imm) {
   switch (imm) {
   case 0x0: { // ecall
-    // Cause = 8 + privilege: U=8, S=9, M=11.
-    // Works because PRIV_U=0, PRIV_S=1, PRIV_M=3 and the spec assigns
-    // ecall causes 8, 9, 11 — the gap at 10 coincides with the gap between S(1) and M(3).
-    cpu->pc = pc;
-    cpu_trap(cpu, 8 + cpu->privilege, 0);
+    if (cpu->privilege == PRIV_S)
+      sbi_ecall(cpu, mem);
+    else
+      // cause = 8 + privilege level (spec-defined)
+      cpu_trap(cpu, 8 + cpu->privilege, 0);
     break;
   }
   case 0x1: // ebreak — halt
@@ -991,8 +992,7 @@ static void execute_trap_return(CPU *cpu, u64 pc, i64 imm) {
 
   case 0x102: { // sret — requires S-mode or higher
     if (cpu->privilege < PRIV_S) {
-      cpu->pc = pc;
-      cpu_trap(cpu, 2, 0);
+      cpu_trap(cpu, EXC_CAUSE_ILLEGAL_INSTR, 0);
       break;
     }
     u64 status = csr_read(cpu, CSR_MSTATUS);
@@ -1013,15 +1013,14 @@ static void execute_trap_return(CPU *cpu, u64 pc, i64 imm) {
   }
   case 0x302: { // mret — requires M-mode
     if (cpu->privilege < PRIV_M) {
-      cpu->pc = pc;
-      cpu_trap(cpu, 2, 0);
+      cpu_trap(cpu, EXC_CAUSE_ILLEGAL_INSTR, 0);
       break;
     }
     u64 status = csr_read(cpu, CSR_MSTATUS);
 
     // restore privilege from MPP, then clear MPP to U(0)
-    cpu->privilege = (status >> MSTATUS_MPP_SHIFT) & 0x3;
-    status &= ~((u64)0x3 << MSTATUS_MPP_SHIFT);
+    cpu->privilege = (status & MSTATUS_MPP_MASK) >> MSTATUS_MPP_SHIFT;
+    status &= ~MSTATUS_MPP_MASK;
 
     // restore MIE from MPIE, then set MPIE
     status &= ~MSTATUS_MIE;
@@ -1034,7 +1033,7 @@ static void execute_trap_return(CPU *cpu, u64 pc, i64 imm) {
     break;
   }
   default:
-    fprintf(stderr, "unknown SYSTEM imm=0x%llx at pc=0x%llx\n", (u64)imm, pc);
+    fprintf(stderr, "unknown SYSTEM imm=0x%llx at pc=0x%llx\n", (u64)imm, cpu->pc);
     exit(1);
   }
 }

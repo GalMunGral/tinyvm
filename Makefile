@@ -13,9 +13,17 @@ RVFLAGS = -nostdlib -march=rv64imafd -mabi=lp64d -mcmodel=medany -Ttext=0x800000
 HOST_TEST_OBJ = $(filter-out build/main.o, $(OBJ))
 HOST_TESTS    = $(patsubst tests/host/%.c, tests/host/%, $(wildcard tests/host/*.c))
 
-.PHONY: all clean fmt test
+DTB_SRC = dtb/tinyvm.dts
+DTB_BIN = dtb/tinyvm.dtb
 
-all: $(BIN)
+.PHONY: all clean fmt test dtb
+
+all: $(BIN) $(DTB_BIN)
+
+dtb: $(DTB_BIN)
+
+$(DTB_BIN): $(DTB_SRC)
+	dtc -I dts -O dtb -o $@ $<
 
 $(BIN): $(OBJ) | bin
 	$(CC) $(LDFLAGS) -o $@ $^
