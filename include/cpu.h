@@ -59,6 +59,15 @@ typedef enum {
 #define MSTATUS_MPIE ((u64)1 << 7)  // previous M-mode interrupt enable (saved on M-mode trap entry)
 #define MSTATUS_SPP  ((u64)1 << 8)  // previous privilege before S-mode trap (0=U, 1=S)
 
+// sstatus is a restricted view of mstatus — only these bits are visible to S-mode
+#define SSTATUS_SIE  ((u64)1 << 1)   // S-mode interrupt enable
+#define SSTATUS_SPIE ((u64)1 << 5)   // previous S-mode interrupt enable
+#define SSTATUS_SPP  ((u64)1 << 8)   // previous privilege before S-mode trap
+#define SSTATUS_FS   ((u64)3 << 13)  // floating-point unit state
+#define SSTATUS_SUM  ((u64)1 << 18)  // supervisor user memory access
+#define SSTATUS_MXR  ((u64)1 << 19)  // make executable pages readable
+#define SSTATUS_MASK (SSTATUS_SIE | SSTATUS_SPIE | SSTATUS_SPP | SSTATUS_FS | SSTATUS_SUM | SSTATUS_MXR)
+
 // MPP is a 2-bit field at bits 12:11 — previous privilege before M-mode trap (0=U, 1=S, 3=M)
 #define MSTATUS_MPP_SHIFT 11
 #define MSTATUS_MPP_MASK  ((u64)0x3 << MSTATUS_MPP_SHIFT)

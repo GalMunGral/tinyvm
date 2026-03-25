@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cpu.h"
+#include "exec.h"
+#include "exec_a.h"
 #include "mmu.h"
 #include "sbi.h"
 
@@ -21,6 +23,16 @@
 #define OP_I_ARITH_W 0x1B
 #define OP_R_ARITH_W 0x3B
 #define OP_SYSTEM 0x73
+
+// OP_SYSTEM funct3==0 imm values (encoded in the instruction's imm field)
+#define SYSTEM_ECALL      0x000
+#define SYSTEM_EBREAK     0x001
+#define SYSTEM_WFI        0x105  // wait for interrupt — NOP in emulator
+#define SYSTEM_SFENCE_VMA 0x120  // TLB flush — NOP in emulator (no TLB)
+#define SYSTEM_SRET       0x102  // supervisor return
+#define SYSTEM_MRET       0x302  // machine return
+#define OP_FENCE   0x0F // FENCE / FENCE.I
+#define OP_AMO     0x2F // A extension: LR/SC and AMOs
 #define OP_FLW_FLD 0x07 // float loads
 #define OP_FSW_FSD 0x27 // float stores
 #define OP_FMADD 0x43   // rd = rs1*rs2 + rs3
@@ -126,14 +138,7 @@
 // ---------------------------------------------------------------------------
 // Structs
 // ---------------------------------------------------------------------------
-typedef struct {
-  u32 opcode;
-  u32 rd, rs1, rs2;
-  u32 funct3, funct7;
-  i64 imm;
-} Instruction;
 
-// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Forward declarations
 // ---------------------------------------------------------------------------
@@ -147,20 +152,34 @@ static i64 sign_extend(u64 val, int bits) {
   return (i64)(val << shift) >> shift;
 }
 
-static void reg_write(CPU *cpu, u32 rd, u64 val) {
-  if (rd != 0)
-    cpu->regs[rd] = val;
-}
 
 static u64 csr_read(const CPU *cpu, u32 addr) {
-  // TODO: handle sstatus as a restricted view of mstatus when privilege levels are added
-  return cpu->csrs[addr];
+  switch (addr) {
+  case CSR_SSTATUS: return cpu->csrs[CSR_MSTATUS] & SSTATUS_MASK;
+  case CSR_SIE:     return cpu->csrs[CSR_MIE]     & cpu->csrs[CSR_MIDELEG];
+  case CSR_SIP:     return cpu->csrs[CSR_MIP]      & cpu->csrs[CSR_MIDELEG];
+  default:          return cpu->csrs[addr];
+  }
 }
 
 static void csr_write(CPU *cpu, u32 addr, u64 val) {
-  // TODO: handle sstatus/mstatus aliasing and write side effects (e.g. mip, satp) when privilege
-  // levels are added
-  cpu->csrs[addr] = val;
+  switch (addr) {
+  case CSR_SSTATUS:
+    // Only SSTATUS_MASK bits are writable through sstatus; other mstatus bits are preserved
+    cpu->csrs[CSR_MSTATUS] = (cpu->csrs[CSR_MSTATUS] & ~SSTATUS_MASK) | (val & SSTATUS_MASK);
+    break;
+  case CSR_SIE:
+    // S-mode can only set bits that M-mode has delegated via mideleg
+    cpu->csrs[CSR_MIE] = (cpu->csrs[CSR_MIE] & ~cpu->csrs[CSR_MIDELEG]) | (val & cpu->csrs[CSR_MIDELEG]);
+    break;
+  case CSR_SIP:
+    // S-mode can only write SSIP (software interrupt pending); other bits are read-only from S-mode
+    cpu->csrs[CSR_MIP] = (cpu->csrs[CSR_MIP] & ~MIP_SSIP) | (val & MIP_SSIP);
+    break;
+  default:
+    cpu->csrs[addr] = val;
+    break;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -917,6 +936,13 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
   // -------------------------------------------------------------------------
   // All other float ops — dispatch to single or double handler
   // -------------------------------------------------------------------------
+  case OP_FENCE: // FENCE / FENCE.I — NOP (no caches or write buffers to flush)
+    break;
+
+  case OP_AMO:
+    execute_a(cpu, mem, inst);
+    break;
+
   case OP_FP: {
     u32 fmt = inst.funct7 & 0x3;
     if (fmt == FMT_SINGLE)
@@ -979,18 +1005,23 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
 // ---------------------------------------------------------------------------
 static void execute_trap_return(CPU *cpu, const Memory *mem, i64 imm) {
   switch (imm) {
-  case 0x0: { // ecall
+  case SYSTEM_ECALL:
     if (cpu->privilege == PRIV_S)
       sbi_ecall(cpu, mem);
     else
       // cause = 8 + privilege level (spec-defined)
       cpu_trap(cpu, 8 + cpu->privilege, 0);
     break;
-  }
-  case 0x1: // ebreak — halt
+
+  case SYSTEM_EBREAK:
     exit(0);
 
-  case 0x102: { // sret — requires S-mode or higher
+  case SYSTEM_WFI:        // interrupt fires on next cpu_step — no sleep needed
+    break;
+  case SYSTEM_SFENCE_VMA: // no TLB to flush — mmu_translate walks page table every access
+    break;
+
+  case SYSTEM_SRET: {
     if (cpu->privilege < PRIV_S) {
       cpu_trap(cpu, EXC_CAUSE_ILLEGAL_INSTR, 0);
       break;
