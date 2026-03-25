@@ -3,7 +3,7 @@
 #include "linux_boot.h"
 #include "sbi.h"
 
-int linux_boot(Memory *mem, CPU *cpu, const char *kernel_path, const char *dtb_path) {
+int linux_boot(Memory *mem, CPU *cpu, const char *kernel_path, const char *dtb_path, const char *initramfs_path) {
   u64 entry = elf_load(mem, kernel_path);
   if (entry == (u64)-1) {
     fprintf(stderr, "linux_boot: failed to load kernel %s\n", kernel_path);
@@ -15,8 +15,13 @@ int linux_boot(Memory *mem, CPU *cpu, const char *kernel_path, const char *dtb_p
     return -1;
   }
 
-  cpu->regs[10] = 0;              // a0 = hart ID
-  cpu->regs[11] = LINUX_DTB_ADDR; // a1 = DTB address
-  sbi_init(cpu, entry);           // set up delegation, drop to S-mode at kernel entry
+  if (!mem_load_file(mem, initramfs_path, LINUX_INITRAMFS_ADDR)) {
+    fprintf(stderr, "linux_boot: failed to load initramfs %s\n", initramfs_path);
+    return -1;
+  }
+
+  cpu->regs[REG_A0] = 0;              // a0 = hart ID
+  cpu->regs[REG_A1] = LINUX_DTB_ADDR; // a1 = DTB address
+  sbi_init(cpu, entry);               // set up delegation, drop to S-mode at kernel entry
   return 0;
 }

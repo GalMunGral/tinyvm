@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+mkdir -p "${REPO_ROOT}/rootfs"
+
+docker run --rm \
+  -v "${REPO_ROOT}/scripts:/scripts:ro" \
+  -v "${REPO_ROOT}/rootfs:/out" \
+  ubuntu:24.04 \
+  bash /scripts/docker_build_rootfs.sh

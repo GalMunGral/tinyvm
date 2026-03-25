@@ -12,7 +12,7 @@
 
 static int boot(Memory *mem, CPU *cpu, const char *mode, const char *binary) {
   if (strcmp(mode, "linux") == 0)
-    return linux_boot(mem, cpu, binary, "dtb/tinyvm.dtb");
+    return linux_boot(mem, cpu, binary, "dtb/tinyvm.dtb", "rootfs/initramfs.cpio.gz");
   if (strcmp(mode, "elf") == 0)
     return elf_boot(mem, cpu, binary);
   fprintf(stderr, "unknown mode: %s\n", mode);

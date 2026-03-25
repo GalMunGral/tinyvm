@@ -1,5 +1,6 @@
 build/
 bin/
+rootfs/
 .idea/
 *.o
 tests/*.elf

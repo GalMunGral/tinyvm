@@ -32,6 +32,8 @@
 	chosen {
 		bootargs = "console=ttyS0 earlycon keep_bootcon";
 		stdout-path = "/soc/uart@10000000";
+		linux,initrd-start = <0x0 0x84000000>;
+		linux,initrd-end   = <0x0 0x84800000>; // 8MB window — cpio parser stops at TRAILER marker
 	};
 
 	soc {

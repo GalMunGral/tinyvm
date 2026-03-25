@@ -16,7 +16,7 @@ HOST_TESTS    = $(patsubst tests/host/%.c, tests/host/%, $(wildcard tests/host/*
 DTB_SRC = dtb/tinyvm.dts
 DTB_BIN = dtb/tinyvm.dtb
 
-.PHONY: all clean fmt test dtb
+.PHONY: all clean fmt test dtb rootfs
 
 all: $(BIN) $(DTB_BIN)
 
@@ -50,6 +50,9 @@ tests/host/%: tests/host/%.c $(HOST_TEST_OBJ) | build
 
 test: $(HOST_TESTS)
 	@for t in $(HOST_TESTS); do echo "running $$t"; $$t; done
+
+rootfs:
+	bash scripts/build_rootfs.sh
 
 fmt:
 	clang-format -i src/*.c include/*.h tests/host/*.c
