@@ -16,7 +16,7 @@ HOST_TESTS    = $(patsubst tests/host/%.c, tests/host/%, $(wildcard tests/host/*
 DTB_SRC = dtb/tinyvm.dts
 DTB_BIN = dtb/tinyvm.dtb
 
-.PHONY: all clean fmt test dtb rootfs
+.PHONY: all clean fmt test dtb rootfs kernel
 
 all: $(BIN) $(DTB_BIN)
 
@@ -53,6 +53,9 @@ test: $(HOST_TESTS)
 
 rootfs:
 	bash scripts/build_rootfs.sh
+
+kernel:
+	bash scripts/build_kernel.sh
 
 fmt:
 	clang-format -i src/*.c include/*.h tests/host/*.c
