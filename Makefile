@@ -16,7 +16,7 @@ HOST_TESTS    = $(patsubst tests/host/%.c, tests/host/%, $(wildcard tests/host/*
 DTB_SRC = dtb/tinyvm.dts
 DTB_BIN = dtb/tinyvm.dtb
 
-.PHONY: all clean fmt test dtb rootfs kernel image
+.PHONY: all clean fmt test dtb rootfs kernel image initramfs
 
 all: $(BIN) $(DTB_BIN)
 
@@ -56,6 +56,9 @@ test: $(HOST_TESTS)
 
 image:
 	bash scripts/build_image.sh
+
+initramfs:
+	bash scripts/repack_initramfs.sh
 
 rootfs:
 	bash scripts/build_rootfs.sh
