@@ -8,5 +8,5 @@ mkdir -p "${REPO_ROOT}/rootfs"
 docker run --rm --platform linux/arm64 \
   -v "${REPO_ROOT}/scripts:/scripts:ro" \
   -v "${REPO_ROOT}/rootfs:/out" \
-  ubuntu:24.04 \
+  tinyvm-builder \
   bash /scripts/docker_build_rootfs.sh

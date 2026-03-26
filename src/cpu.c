@@ -11,35 +11,37 @@
 // ---------------------------------------------------------------------------
 // Opcodes (bits[6:0])
 // ---------------------------------------------------------------------------
-#define OP_LUI 0x37
-#define OP_AUIPC 0x17
-#define OP_JAL 0x6F
-#define OP_JALR 0x67
-#define OP_BRANCH 0x63
-#define OP_LOAD 0x03
-#define OP_STORE 0x23
-#define OP_I_ARITH 0x13
-#define OP_R_ARITH 0x33
+#define OP_LUI       0x37
+#define OP_AUIPC     0x17
+#define OP_JAL       0x6F
+#define OP_JALR      0x67
+#define OP_BRANCH    0x63
+#define OP_LOAD      0x03
+#define OP_STORE     0x23
+#define OP_I_ARITH   0x13
+#define OP_R_ARITH   0x33
 #define OP_I_ARITH_W 0x1B
 #define OP_R_ARITH_W 0x3B
-#define OP_SYSTEM 0x73
+#define OP_SYSTEM    0x73
+#define OP_FENCE     0x0F // FENCE / FENCE.I
+#define OP_AMO       0x2F // A extension: LR/SC and AMOs
+#define OP_FLW_FLD   0x07 // float loads
+#define OP_FSW_FSD   0x27 // float stores
+#define OP_FMADD     0x43 // rd = rs1*rs2 + rs3
+#define OP_FMSUB     0x47 // rd = rs1*rs2 - rs3
+#define OP_FNMSUB    0x4B // rd = -(rs1*rs2) + rs3
+#define OP_FNMADD    0x4F // rd = -(rs1*rs2) - rs3
+#define OP_FP        0x53 // all other float ops
 
-// OP_SYSTEM funct3==0 imm values (encoded in the instruction's imm field)
-#define SYSTEM_ECALL      0x000
-#define SYSTEM_EBREAK     0x001
-#define SYSTEM_WFI        0x105  // wait for interrupt — NOP in emulator
-#define SYSTEM_SFENCE_VMA 0x120  // TLB flush — NOP in emulator (no TLB)
-#define SYSTEM_SRET       0x102  // supervisor return
-#define SYSTEM_MRET       0x302  // machine return
-#define OP_FENCE   0x0F // FENCE / FENCE.I
-#define OP_AMO     0x2F // A extension: LR/SC and AMOs
-#define OP_FLW_FLD 0x07 // float loads
-#define OP_FSW_FSD 0x27 // float stores
-#define OP_FMADD 0x43   // rd = rs1*rs2 + rs3
-#define OP_FMSUB 0x47   // rd = rs1*rs2 - rs3
-#define OP_FNMSUB 0x4B  // rd = -(rs1*rs2) + rs3
-#define OP_FNMADD 0x4F  // rd = -(rs1*rs2) - rs3
-#define OP_FP 0x53      // all other float ops
+// OP_SYSTEM funct3==0 imm values (bits[31:20] of instruction)
+#define SYSTEM_ECALL  0x000
+#define SYSTEM_EBREAK 0x001
+#define SYSTEM_WFI    0x105 // wait for interrupt — NOP in emulator
+#define SYSTEM_SRET   0x102 // supervisor return
+#define SYSTEM_MRET   0x302 // machine return
+
+// sfence.vma funct7 (bits[31:25], i.e. imm>>5) — rs1/rs2 vary so can't match full imm
+#define SYSTEM_FUNCT7_SFENCE_VMA 0x09 // TLB flush — NOP in emulator (no TLB)
 
 // ---------------------------------------------------------------------------
 // funct3 — branches
@@ -158,6 +160,13 @@ static u64 csr_read(const CPU *cpu, u32 addr) {
   case CSR_SSTATUS: return cpu->csrs[CSR_MSTATUS] & SSTATUS_MASK;
   case CSR_SIE:     return cpu->csrs[CSR_MIE]     & cpu->csrs[CSR_MIDELEG];
   case CSR_SIP:     return cpu->csrs[CSR_MIP]      & cpu->csrs[CSR_MIDELEG];
+  // cycle, time, and instret all reflect the same step counter owned by the CPU
+  case CSR_CYCLE:
+  case CSR_TIME:
+  case CSR_INSTRET:
+  case CSR_MCYCLE:
+  case CSR_MINSTRET:
+    return cpu->steps;
   default:          return cpu->csrs[addr];
   }
 }
@@ -176,6 +185,14 @@ static void csr_write(CPU *cpu, u32 addr, u64 val) {
     // S-mode can only write SSIP (software interrupt pending); other bits are read-only from S-mode
     cpu->csrs[CSR_MIP] = (cpu->csrs[CSR_MIP] & ~MIP_SSIP) | (val & MIP_SSIP);
     break;
+  case CSR_SATP: {
+    // Real hardware clears unsupported mode bits to bare (0); we only support sv39 (8) and bare (0)
+    u64 mode = (val & SATP_MODE_MASK) >> SATP_MODE_SHIFT;
+if (mode != SATP_MODE_BARE && mode != SATP_MODE_SV39)
+      val &= ~SATP_MODE_MASK; // clear mode → bare
+    cpu->csrs[CSR_SATP] = val;
+    break;
+  }
   default:
     cpu->csrs[addr] = val;
     break;
@@ -713,8 +730,8 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
       val = rs1 << shamt;
       break; // SLLI
     case F3_SRL_SRA:
-      val = inst.funct7 == F7_ALT ? (u64)((i64)rs1 >> shamt) // SRAI
-                                  : rs1 >> shamt;            // SRLI
+      val = (inst.funct7 & F7_ALT) ? (u64)((i64)rs1 >> shamt) // SRAI
+                                    : rs1 >> shamt;            // SRLI
       break;
     default:
       fprintf(stderr, "unknown I-arith funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
@@ -821,20 +838,33 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
     u32 rs2w  = (u32)rs2;
     u32 shamt = rs2w & 0x1F;
     u32 val32 = 0;
-    switch (inst.funct3) {
-    case F3_ADD_SUB:
-      val32 = inst.funct7 == F7_ALT ? rs1w - rs2w : rs1w + rs2w; // ADDW/SUBW
-      break;
-    case F3_SLL:
-      val32 = rs1w << shamt;
-      break; // SLLW
-    case F3_SRL_SRA:
-      val32 = inst.funct7 == F7_ALT ? (u32)((i32)rs1w >> shamt) // SRAW
-                                    : rs1w >> shamt;            // SRLW
-      break;
-    default:
-      fprintf(stderr, "unknown R-arith-W funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
-      exit(1);
+    if (inst.funct7 == F7_MEXT) { // M extension — 32-bit multiply/divide
+      switch (inst.funct3) {
+      case F3_MUL:  val32 = rs1w * rs2w; break;                                          // MULW
+      case F3_DIV:  val32 = rs2w == 0 ? (u32)-1 : (u32)((i32)rs1w / (i32)rs2w); break; // DIVW
+      case F3_DIVU: val32 = rs2w == 0 ? (u32)-1 : rs1w / rs2w; break;                   // DIVUW
+      case F3_REM:  val32 = rs2w == 0 ? rs1w : (u32)((i32)rs1w % (i32)rs2w); break;    // REMW
+      case F3_REMU: val32 = rs2w == 0 ? rs1w : rs1w % rs2w; break;                      // REMUW
+      default:
+        fprintf(stderr, "unknown M-ext-W funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
+        exit(1);
+      }
+    } else {
+      switch (inst.funct3) {
+      case F3_ADD_SUB:
+        val32 = inst.funct7 == F7_ALT ? rs1w - rs2w : rs1w + rs2w; // ADDW/SUBW
+        break;
+      case F3_SLL:
+        val32 = rs1w << shamt;
+        break; // SLLW
+      case F3_SRL_SRA:
+        val32 = inst.funct7 == F7_ALT ? (u32)((i32)rs1w >> shamt) // SRAW
+                                      : rs1w >> shamt;            // SRLW
+        break;
+      default:
+        fprintf(stderr, "unknown R-arith-W funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
+        exit(1);
+      }
     }
     reg_write(cpu, inst.rd, (u64)(i64)(i32)val32);
     break;
@@ -1014,13 +1044,12 @@ static void execute_trap_return(CPU *cpu, const Memory *mem, i64 imm) {
     break;
 
   case SYSTEM_EBREAK:
-    exit(0);
+    cpu_trap(cpu, EXC_CAUSE_BREAKPOINT, 0);
+    break;
 
   case SYSTEM_WFI:        // interrupt fires on next cpu_step — no sleep needed
+    cpu->pc += INSN_SIZE;
     break;
-  case SYSTEM_SFENCE_VMA: // no TLB to flush — mmu_translate walks page table every access
-    break;
-
   case SYSTEM_SRET: {
     if (cpu->privilege < PRIV_S) {
       cpu_trap(cpu, EXC_CAUSE_ILLEGAL_INSTR, 0);
@@ -1063,9 +1092,15 @@ static void execute_trap_return(CPU *cpu, const Memory *mem, i64 imm) {
     cpu->pc = csr_read(cpu, CSR_MEPC);
     break;
   }
-  default:
+  default: {
+    u32 funct7 = (u32)imm >> 5;
+    if (funct7 == SYSTEM_FUNCT7_SFENCE_VMA) { // no TLB to flush
+      cpu->pc += INSN_SIZE;
+      break;
+    }
     fprintf(stderr, "unknown SYSTEM imm=0x%llx at pc=0x%llx\n", (u64)imm, cpu->pc);
     exit(1);
+  }
   }
 }
 
@@ -1075,6 +1110,12 @@ static void execute_trap_return(CPU *cpu, const Memory *mem, i64 imm) {
 void cpu_trap(CPU *cpu, u64 cause, u64 tval) {
   // Bit 63 distinguishes interrupts from exceptions; each uses its own delegation CSR
   bool is_interrupt = (cause >> 63) != 0;
+
+  // Log M-mode traps (always unexpected after boot) and S-mode exceptions (not normal interrupts)
+  if (cpu->privilege == PRIV_M || !is_interrupt)
+    fprintf(stderr, "[TRAP!] pc=0x%llx cause=0x%llx tval=0x%llx priv=%d int=%d\n",
+            (unsigned long long)cpu->pc, (unsigned long long)cause,
+            (unsigned long long)tval, cpu->privilege, is_interrupt);
   u32  deleg_csr    = is_interrupt ? CSR_MIDELEG : CSR_MEDELEG;
   u64  cause_idx    = cause & 0x3F; // strip interrupt bit for delegation lookup
 
@@ -1184,11 +1225,7 @@ static bool cpu_check_interrupts(CPU *cpu) {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-CPU *cpu_create(void) {
-  CPU *cpu = calloc(1, sizeof(CPU));
-  if (!cpu)
-    return NULL;
-
+void cpu_init(CPU *cpu) {
   // Real hardware resets in M-mode. We start there too, then delegate all
   // standard exceptions and interrupts to S-mode so Linux (running in S-mode)
   // can handle its own traps without going through firmware on every ecall/fault.
@@ -1199,12 +1236,10 @@ CPU *cpu_create(void) {
   cpu->pc       = 0x80000000;
   cpu->regs[10] = 0; // a0 = hart ID
   cpu->regs[11] = 0; // a1 = DTB address (none yet)
-  return cpu;
 }
 
-void cpu_destroy(CPU *cpu) { free(cpu); }
-
 void cpu_step(CPU *cpu, const Memory *mem) {
+  cpu->steps++;  // advance the unified cycle/time/instret counter
   if (cpu_check_interrupts(cpu))
     return;
   u64 pc_pa = mmu_translate(cpu, mem, cpu->pc, MMU_FETCH);

@@ -2,16 +2,28 @@
 
 #include "types.h"
 
+#define MAX_REGIONS 8
+
 typedef struct MemRegion MemRegion;
-typedef struct Memory    Memory;
 
 typedef u64 (*MemReadFn)(MemRegion *r, u64 offset, size_t width);
 typedef void (*MemWriteFn)(MemRegion *r, u64 offset, u64 val, size_t width);
 
-Memory *mem_create(void);
-void    mem_destroy(Memory *mem);
-bool    mem_add_region(Memory *mem, u64 base, size_t size);
-bool    mem_add_device(Memory *mem, u64 base, size_t size, MemReadFn read, MemWriteFn write);
+struct MemRegion {
+  u64        base;
+  size_t     size;
+  u8        *data;
+  MemReadFn  read;
+  MemWriteFn write;
+};
+
+typedef struct {
+  MemRegion regions[MAX_REGIONS];
+  int       count;
+} Memory;
+
+bool mem_add_region(Memory *mem, u64 base, size_t size);
+bool mem_add_device(Memory *mem, u64 base, size_t size, MemReadFn read, MemWriteFn write);
 
 u8  mem_read8(const Memory *mem, u64 addr);
 u16 mem_read16(const Memory *mem, u64 addr);

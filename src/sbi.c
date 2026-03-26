@@ -18,6 +18,9 @@ void sbi_init(CPU *cpu, const u64 kernel_entry) {
   // Delegate timer, software, and external interrupts to S-mode
   cpu->csrs[CSR_MIDELEG] = MIP_SSIP | MIP_STIP | MIP_SEIP;
 
+  // Allow S-mode to read cycle, time, and instret directly via rdcycle/rdtime/rdinstret
+  cpu->csrs[CSR_MCOUNTEREN] = MCOUNTEREN_CY | MCOUNTEREN_TM | MCOUNTEREN_IR;
+
   // Simulate mret: MPP=S, MPIE=1, drop privilege to S-mode, jump to kernel
   u64 status = cpu->csrs[CSR_MSTATUS];
   status &= ~MSTATUS_MPP_MASK;
@@ -38,6 +41,7 @@ static bool is_supported_eid(u64 eid) {
   case SBI_EID_SET_TIMER: return true;
   case SBI_EID_PUTCHAR:   return true;
   case SBI_EID_BASE:      return true;
+  case SBI_EID_TIMER:     return true;
   case SBI_EID_RESET:     return true;
   default:                return false;
   }
@@ -73,9 +77,21 @@ void sbi_ecall(CPU *cpu, const Memory *mem) {
 
   switch (eid) {
   case SBI_EID_SET_TIMER:
+    cpu_lower_irq(cpu, MIP_STIP);
     clint_set_timecmp(cpu->regs[REG_A0]);
     cpu->regs[REG_A0] = SBI_SUCCESS;
     cpu->regs[REG_A1] = 0;
+    break;
+  case SBI_EID_TIMER:
+    if (cpu->regs[REG_A6] == SBI_TIMER_SET_TIMER) {
+      cpu_lower_irq(cpu, MIP_STIP);
+      clint_set_timecmp(cpu->regs[REG_A0]);
+      cpu->regs[REG_A0] = SBI_SUCCESS;
+      cpu->regs[REG_A1] = 0;
+    } else {
+      cpu->regs[REG_A0] = SBI_ERR_NOT_SUPPORTED;
+      cpu->regs[REG_A1] = 0;
+    }
     break;
   case SBI_EID_PUTCHAR:
     putchar((int)cpu->regs[REG_A0]);

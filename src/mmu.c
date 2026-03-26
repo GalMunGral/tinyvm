@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "mmu.h"
 #include "trap.h"
 
@@ -12,8 +13,6 @@
 // ---------------------------------------------------------------------------
 // SATP fields
 // ---------------------------------------------------------------------------
-#define SATP_MODE_SHIFT 60
-#define SATP_MODE_SV39 8
 #define SATP_PPN_MASK 0x00000FFFFFFFFFFFULL // bits[43:0]
 
 // ---------------------------------------------------------------------------
@@ -34,9 +33,12 @@
 // ---------------------------------------------------------------------------
 static u32 fault_cause(MmuAccess access) {
   switch (access) {
-  case MMU_FETCH: return EXC_CAUSE_FETCH_PAGE_FAULT;
-  case MMU_STORE: return EXC_CAUSE_STORE_PAGE_FAULT;
-  default:        return EXC_CAUSE_LOAD_PAGE_FAULT;
+  case MMU_FETCH:
+    return EXC_CAUSE_FETCH_PAGE_FAULT;
+  case MMU_STORE:
+    return EXC_CAUSE_STORE_PAGE_FAULT;
+  default:
+    return EXC_CAUSE_LOAD_PAGE_FAULT;
   }
 }
 
@@ -50,7 +52,7 @@ static u64 vpn_of(u64 va, int level) {
 // Compute the physical address of a PTE given the page table's PPN and the VPN index
 static u64 pte_addr_of(u64 ppn, u64 vpn) { return (ppn << PAGE_OFFSET_BITS) + vpn * PTE_SIZE; }
 
-static bool pte_check(u64 pte, Privilege privilege, MmuAccess access) {
+static bool pte_check(u64 pte, const CPU *cpu, MmuAccess access) {
   switch (access) {
   case MMU_FETCH:
     if (!(pte & PTE_X))
@@ -65,9 +67,11 @@ static bool pte_check(u64 pte, Privilege privilege, MmuAccess access) {
       return false;
     break;
   }
-  if (privilege == PRIV_U && !(pte & PTE_U))
+  if (cpu->privilege == PRIV_U && !(pte & PTE_U))
     return false;
-  if (privilege == PRIV_S && (pte & PTE_U))
+  // S-mode can access user pages only when sstatus.SUM is set
+  if (cpu->privilege == PRIV_S && (pte & PTE_U) &&
+      !(cpu->csrs[CSR_MSTATUS] & SSTATUS_SUM))
     return false;
   return true;
 }
@@ -115,7 +119,7 @@ u64 mmu_translate(CPU *cpu, const Memory *mem, u64 va, MmuAccess access) {
     return MMU_FAULT;
   }
 
-  if (!pte_check(pte, cpu->privilege, access)) {
+  if (!pte_check(pte, cpu, access)) {
     cpu_trap(cpu, fault_cause(access), va);
     return MMU_FAULT;
   }

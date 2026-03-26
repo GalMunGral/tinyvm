@@ -15,6 +15,7 @@ typedef struct {
 
 // Write to an integer register, respecting the hardwired-zero invariant of x0
 static inline void reg_write(CPU *cpu, const u32 rd, const u64 val) {
-  if (rd != 0)
+  if (rd != 0) {
     cpu->regs[rd] = val;
+  }
 }

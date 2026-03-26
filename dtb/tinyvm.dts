@@ -8,6 +8,7 @@
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
+		timebase-frequency = <10000000>; // CLINT mtime ticks at 10MHz (1 tick per cpu step, ~10M steps/sec)
 
 		cpu@0 {
 			device_type = "cpu";
@@ -24,16 +25,16 @@
 		};
 	};
 
-	memory@7f000000 {
+	memory@80000000 {
 		device_type = "memory";
-		reg = <0x0 0x7f000000 0x0 0x10000000>; // 256MB at 0x7f000000
+		reg = <0x0 0x80000000 0x0 0x10000000>; // 256MB at 0x80000000
 	};
 
 	chosen {
 		bootargs = "console=ttyS0 earlycon keep_bootcon";
 		stdout-path = "/soc/uart@10000000";
 		linux,initrd-start = <0x0 0x84000000>;
-		linux,initrd-end   = <0x0 0x84800000>; // 8MB window — cpio parser stops at TRAILER marker
+		linux,initrd-end = <0x0 0x84800000>; // 8MB window — cpio parser stops at TRAILER marker
 	};
 
 	soc {

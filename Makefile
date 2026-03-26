@@ -1,5 +1,5 @@
 CC      = clang
-CFLAGS  = -std=c11 -Wall -Wextra -Iinclude
+CFLAGS  = -std=c11 -Wall -Wextra -Iinclude -MMD -MP
 LDFLAGS =
 
 SRC     = $(wildcard src/*.c)
@@ -16,7 +16,7 @@ HOST_TESTS    = $(patsubst tests/host/%.c, tests/host/%, $(wildcard tests/host/*
 DTB_SRC = dtb/tinyvm.dts
 DTB_BIN = dtb/tinyvm.dtb
 
-.PHONY: all clean fmt test dtb rootfs kernel
+.PHONY: all clean fmt test dtb rootfs kernel image
 
 all: $(BIN) $(DTB_BIN)
 
@@ -27,6 +27,9 @@ $(DTB_BIN): $(DTB_SRC)
 
 $(BIN): $(OBJ) | bin
 	$(CC) $(LDFLAGS) -o $@ $^
+
+DEP = $(OBJ:.o=.d)
+-include $(DEP)
 
 build/%.o: src/%.c | build
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -50,6 +53,9 @@ tests/host/%: tests/host/%.c $(HOST_TEST_OBJ) | build
 
 test: $(HOST_TESTS)
 	@for t in $(HOST_TESTS); do echo "running $$t"; $$t; done
+
+image:
+	bash scripts/build_image.sh
 
 rootfs:
 	bash scripts/build_rootfs.sh

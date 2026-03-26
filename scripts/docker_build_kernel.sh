@@ -1,17 +1,19 @@
 #!/bin/bash
 set -e
 
-KERNEL_VERSION=6.13.7
 CROSS=riscv64-linux-gnu
 
-apt-get update -qq
-apt-get install -y -qq gcc gcc-${CROSS} make wget bc flex bison libelf-dev libssl-dev xz-utils
-
-wget -q https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz
-tar xf linux-${KERNEL_VERSION}.tar.xz
-cd linux-${KERNEL_VERSION}
+cd /linux
 
 make defconfig ARCH=riscv CROSS_COMPILE=${CROSS}-
+make olddefconfig ARCH=riscv CROSS_COMPILE=${CROSS}-
+# Disable after olddefconfig, then go straight to make without another olddefconfig pass.
+# CONFIG_EFI (default y) selects both RISCV_ISA_C and EFI_GENERIC_STUB.
+# NONPORTABLE=y stops CONFIG_PORTABLE from re-selecting EFI via syncconfig.
+sed -i 's/# CONFIG_NONPORTABLE is not set/CONFIG_NONPORTABLE=y/' .config
+sed -i 's/CONFIG_EFI=y/# CONFIG_EFI is not set/' .config
+sed -i 's/CONFIG_RISCV_ISA_C=y/# CONFIG_RISCV_ISA_C is not set/' .config
+
 make -j$(nproc) ARCH=riscv CROSS_COMPILE=${CROSS}- vmlinux
 
 cp vmlinux /out/vmlinux

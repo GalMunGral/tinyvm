@@ -3,20 +3,6 @@
 #include <string.h>
 #include "memory.h"
 
-#define MAX_REGIONS 8
-
-struct MemRegion {
-  u64        base;
-  size_t     size;
-  u8        *data;
-  MemReadFn  read;
-  MemWriteFn write;
-};
-
-struct Memory {
-  MemRegion regions[MAX_REGIONS];
-  int       count;
-};
 
 // ---------------------------------------------------------------------------
 // Default handlers — plain byte-array read/write
@@ -58,15 +44,6 @@ static bool add_region(Memory *mem, u64 base, size_t size, u8 *data, MemReadFn r
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-Memory *mem_create(void) { return calloc(1, sizeof(Memory)); }
-
-void mem_destroy(Memory *mem) {
-  if (!mem)
-    return;
-  for (int i = 0; i < mem->count; i++)
-    free(mem->regions[i].data);
-  free(mem);
-}
 
 bool mem_add_region(Memory *mem, u64 base, size_t size) {
   u8 *data = calloc(1, size);

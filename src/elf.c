@@ -4,7 +4,7 @@
 #include "cpu.h"
 #include "elf.h"
 
-u64 elf_load(Memory *mem, const char *path) {
+u64 elf_load(Memory *mem, const char *path, u64 phys_base) {
   FILE *f = fopen(path, "rb");
   if (!f) {
     fprintf(stderr, "elf_load: cannot open '%s'\n", path);
@@ -37,32 +37,47 @@ u64 elf_load(Memory *mem, const char *path) {
     return (u64)-1;
   }
 
-  // Load segments
+  // Compute virt→phys shift from the first LOAD segment.
+  // For the Linux kernel: vaddr=0xffffffff80000000, paddr=0x0 → shift=0xffffffff80000000.
+  // For simple ELFs: vaddr=paddr=0x80000000 → shift=0x0.
+  u64 virt_shift = 0;
+  for (int i = 0; i < ehdr->ph_num; i++) {
+    ElfProgramHeader *phdr = (ElfProgramHeader *)(data + ehdr->ph_off + i * ehdr->ph_ent_size);
+    if (phdr->type == ELF_PT_LOAD) {
+      virt_shift = phdr->vaddr - phdr->paddr;
+      break;
+    }
+  }
+
+  // Load segments at paddr + phys_base
   for (int i = 0; i < ehdr->ph_num; i++) {
     ElfProgramHeader *phdr = (ElfProgramHeader *)(data + ehdr->ph_off + i * ehdr->ph_ent_size);
     if (phdr->type != ELF_PT_LOAD)
       continue;
 
+    u64 phys_addr = phdr->paddr + phys_base;
+
     // Copy initialized data
     if (phdr->file_size > 0)
-      mem_write_buf(mem, phdr->vaddr, data + phdr->offset, phdr->file_size);
+      mem_write_buf(mem, phys_addr, data + phdr->offset, phdr->file_size);
 
     // Zero BSS tail
     if (phdr->mem_size > phdr->file_size) {
       size_t bss_size = phdr->mem_size - phdr->file_size;
       u8    *zeros    = calloc(1, bss_size);
-      mem_write_buf(mem, phdr->vaddr + phdr->file_size, zeros, bss_size);
+      mem_write_buf(mem, phys_addr + phdr->file_size, zeros, bss_size);
       free(zeros);
     }
   }
 
-  u64 entry = ehdr->entry;
+  // Physical entry = virtual entry - virt_shift + phys_base
+  u64 entry = ehdr->entry - virt_shift + phys_base;
   free(data);
   return entry;
 }
 
 int elf_boot(Memory *mem, CPU *cpu, const char *path) {
-  u64 entry = elf_load(mem, path);
+  u64 entry = elf_load(mem, path, 0);
   if (entry == (u64)-1) return -1;
   cpu->pc = entry;
   return 0;

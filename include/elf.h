@@ -32,8 +32,11 @@ typedef struct {
 } ElfProgramHeader;
 
 // Load an ELF64 binary into guest memory.
-// Returns the entry point address, or (u64)-1 on failure.
-u64 elf_load(Memory *mem, const char *path);
+// phys_base is added to each segment's paddr to get the physical load address.
+// For position-dependent ELFs where paddr == physical address, pass 0.
+// For the Linux kernel where paddr is relative to RAM start, pass the RAM base (e.g. 0x80000000).
+// Returns the physical entry point, or (u64)-1 on failure.
+u64 elf_load(Memory *mem, const char *path, u64 phys_base);
 
 // Load an ELF64 binary and set cpu->pc to its entry point.
 // Returns 0 on success, -1 on failure.
