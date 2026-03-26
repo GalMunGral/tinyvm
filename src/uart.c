@@ -1,6 +1,10 @@
 #include "uart.h"
 
+#include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <termios.h>
+#include <unistd.h>
 
 #define UART_SIZE 8
 
@@ -19,6 +23,7 @@
 #define UART_SCR 7 // scratch register
 
 // LSR bits
+#define UART_LSR_RX_READY 0x01 // DR  (bit0): receiver data ready
 #define UART_LSR_TX_READY 0x60 // THRE (bit5) + TEMT (bit6): always ready to transmit
 
 // IIR bits: FIFO enabled (bits 7:6=11), no interrupt pending (bit0=1)
@@ -31,15 +36,41 @@
 #define UART_MSR_READY 0xB0
 
 static struct {
-  u8 lcr, ier, mcr, scr, dll, dlh;
+  u8   lcr, ier, mcr, scr, dll, dlh;
+  u8   rx_buf;
+  bool rx_ready;
 } s_uart;
+
+static struct termios s_orig_termios;
+static int            s_orig_flags;
+
+static void __attribute__((unused)) uart_restore(void) {
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &s_orig_termios);
+  fcntl(STDIN_FILENO, F_SETFL, s_orig_flags);
+}
+
+static void uart_poll_rx(void) {
+  if (s_uart.rx_ready)
+    return;
+  u8  c;
+  int n = (int)read(STDIN_FILENO, &c, 1);
+  if (n == 1) {
+    s_uart.rx_buf   = c;
+    s_uart.rx_ready = true;
+  }
+}
 
 static u64 uart_read(MemRegion *r, u64 offset, size_t width) {
   (void)r;
   (void)width;
   switch (offset) {
   case UART_RBR:
-    return (s_uart.lcr & UART_LCR_DLAB) ? s_uart.dll : 0;
+    if (s_uart.lcr & UART_LCR_DLAB)
+      return s_uart.dll;
+    if (!s_uart.rx_ready)
+      return 0;
+    s_uart.rx_ready = false;
+    return s_uart.rx_buf;
   case UART_IER:
     return (s_uart.lcr & UART_LCR_DLAB) ? s_uart.dlh : s_uart.ier;
   case UART_IIR:
@@ -49,7 +80,8 @@ static u64 uart_read(MemRegion *r, u64 offset, size_t width) {
   case UART_MCR:
     return s_uart.mcr;
   case UART_LSR:
-    return UART_LSR_TX_READY;
+    uart_poll_rx();
+    return UART_LSR_TX_READY | (s_uart.rx_ready ? UART_LSR_RX_READY : 0);
   case UART_MSR:
     return UART_MSR_READY;
   case UART_SCR:
@@ -95,4 +127,18 @@ static void uart_write(MemRegion *r, u64 offset, u64 val, size_t width) {
   }
 }
 
-void uart_init(Memory *mem) { mem_add_device(mem, UART_BASE, UART_SIZE, uart_read, uart_write); }
+void uart_init(Memory *mem) {
+  // Make stdin non-blocking so uart_poll_rx never stalls the emulator
+  s_orig_flags = fcntl(STDIN_FILENO, F_GETFL);
+  fcntl(STDIN_FILENO, F_SETFL, s_orig_flags | O_NONBLOCK);
+  atexit(uart_restore);
+
+  // TODO: enable raw mode for interactive use (single keypresses, no echo)
+  // tcgetattr(STDIN_FILENO, &s_orig_termios);
+  // struct termios raw = s_orig_termios;
+  // cfmakeraw(&raw);
+  // raw.c_oflag = s_orig_termios.c_oflag;
+  // tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+
+  mem_add_device(mem, UART_BASE, UART_SIZE, uart_read, uart_write);
+}

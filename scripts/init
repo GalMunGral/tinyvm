@@ -1,4 +1,7 @@
 #!/bin/sh
+echo "init: before proc mount"
 mount -t proc proc /proc
+echo "init: before sysfs mount"
 mount -t sysfs sysfs /sys
-exec /bin/sh
+echo "init: before exec sh"
+exec /bin/sh -i

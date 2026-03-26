@@ -996,11 +996,6 @@ void cpu_trap(CPU *cpu, u64 cause, u64 tval) {
   // Bit 63 distinguishes interrupts from exceptions; each uses its own delegation CSR
   bool is_interrupt = (cause >> 63) != 0;
 
-  // Log M-mode traps (always unexpected after boot) and S-mode exceptions (not normal interrupts)
-  if (cpu->privilege == PRIV_M || !is_interrupt)
-    fprintf(stderr, "[TRAP!] pc=0x%llx cause=0x%llx tval=0x%llx priv=%d int=%d\n",
-            (unsigned long long)cpu->pc, (unsigned long long)cause, (unsigned long long)tval,
-            cpu->privilege, is_interrupt);
   u32 deleg_csr = is_interrupt ? CSR_MIDELEG : CSR_MEDELEG;
   u64 cause_idx = cause & 0x3F; // strip interrupt bit for delegation lookup
 
