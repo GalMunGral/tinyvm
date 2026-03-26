@@ -13,9 +13,11 @@ if [ ! -d "${STAGING}" ]; then
   gunzip -c "${CPIO}" | cpio -id --quiet
 fi
 
-# Overlay init script
+# Overlay init script and extras
 cp "${REPO_ROOT}/scripts/init" "${STAGING}/init"
 chmod +x "${STAGING}/init"
+cp "${REPO_ROOT}/scripts/httpd.sh" "${STAGING}/httpd.sh"
+chmod +x "${STAGING}/httpd.sh"
 
 # Repack
 echo "Repacking initramfs..."
