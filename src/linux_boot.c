@@ -1,9 +1,12 @@
-#include <stdio.h>
-#include "elf.h"
 #include "linux_boot.h"
+
+#include <stdio.h>
+
+#include "elf.h"
 #include "sbi.h"
 
-int linux_boot(Memory *mem, CPU *cpu, const char *kernel_path, const char *dtb_path, const char *initramfs_path) {
+int linux_boot(Memory *mem, CPU *cpu, const char *kernel_path, const char *dtb_path,
+               const char *initramfs_path) {
   u64 entry = elf_load(mem, kernel_path, 0x80000000ULL);
   if (entry == (u64)-1) {
     fprintf(stderr, "linux_boot: failed to load kernel %s\n", kernel_path);

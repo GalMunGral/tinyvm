@@ -3,4 +3,10 @@ ColumnLimit: 100
 PointerAlignment: Right
 AlignConsecutiveDeclarations: true
 AlignConsecutiveAssignments: true
-SortIncludes: false
+SortIncludes: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:    '^<'
+    Priority: 1
+  - Regex:    '^"'
+    Priority: 2

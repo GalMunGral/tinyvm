@@ -11,6 +11,7 @@ typedef struct {
   u32 rd, rs1, rs2;
   u32 funct3, funct7;
   i64 imm;
+  u32 size; // instruction size in bytes: 4 for base ISA, 2 for RVC
 } Instruction;
 
 // Write to an integer register, respecting the hardwired-zero invariant of x0

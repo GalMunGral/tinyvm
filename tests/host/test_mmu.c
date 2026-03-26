@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+
 #include "cpu.h"
 #include "memory.h"
 #include "mmu.h"
@@ -14,13 +15,13 @@
 //   VPN[2] = 0, VPN[1] = 0, VPN[0] = 1
 
 #define RAM_BASE 0x80000000ULL
-#define PAGE     4096
-#define L2_PA    (RAM_BASE + 0 * PAGE)
-#define L1_PA    (RAM_BASE + 1 * PAGE)
-#define L0_PA    (RAM_BASE + 2 * PAGE)
-#define DATA_PA  (RAM_BASE + 3 * PAGE)
+#define PAGE 4096
+#define L2_PA (RAM_BASE + 0 * PAGE)
+#define L1_PA (RAM_BASE + 1 * PAGE)
+#define L0_PA (RAM_BASE + 2 * PAGE)
+#define DATA_PA (RAM_BASE + 3 * PAGE)
 
-#define TEST_VA  0x1000ULL
+#define TEST_VA 0x1000ULL
 
 // PTE encoding: PPN lives at bits[53:10]
 #define MAKE_PTE(pa, flags) ((((pa) >> 12) << 10) | (flags))
@@ -40,8 +41,8 @@ static void setup(Memory *mem, CPU *cpu) {
   mem_write64(mem, L1_PA + 0 * 8, PTE_POINTER(L0_PA));
   mem_write64(mem, L0_PA + 1 * 8, PTE_LEAF_RW(DATA_PA));
 
-  cpu->privilege         = PRIV_S;
-  cpu->csrs[CSR_SATP]    = SATP_SV39(L2_PA);
+  cpu->privilege      = PRIV_S;
+  cpu->csrs[CSR_SATP] = SATP_SV39(L2_PA);
 }
 
 int main(void) {

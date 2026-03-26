@@ -6,7 +6,7 @@ typedef struct {
 } Clint;
 
 // mtimecmp initialized to UINT64_MAX so no timer fires until software programs it
-static Clint g_clint = { .mtimecmp = UINT64_MAX };
+static Clint g_clint = {.mtimecmp = UINT64_MAX};
 
 // Called every cpu_step — mirrors the CLINT hardware comparator running continuously.
 // Raises or lowers STIP depending on whether mtime has reached mtimecmp.
@@ -35,9 +35,7 @@ static void clint_write(MemRegion *r, u64 offset, u64 val, size_t width) {
   // mtime is read-only — writes ignored
 }
 
-void clint_set_timecmp(const u64 val) {
-  g_clint.mtimecmp = val;
-}
+void clint_set_timecmp(const u64 val) { g_clint.mtimecmp = val; }
 
 void clint_init(Memory *mem, CPU *cpu) {
   g_clint.cpu = cpu;

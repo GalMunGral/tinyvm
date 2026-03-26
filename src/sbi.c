@@ -1,6 +1,8 @@
-#include <stdio.h>
-#include "clint.h"
 #include "sbi.h"
+
+#include <stdio.h>
+
+#include "clint.h"
 
 // medeleg bitmasks — bit N delegates exception cause N to S-mode
 #define MEDELEG_BIT(cause) ((u64)1 << (cause))
@@ -8,12 +10,12 @@
 void sbi_init(CPU *cpu, const u64 kernel_entry) {
   // Delegate exceptions to S-mode (all except ecall from S-mode, which stays in M-mode for SBI)
   cpu->csrs[CSR_MEDELEG] =
-      MEDELEG_BIT(EXC_CAUSE_INSTR_MISALIGNED) | MEDELEG_BIT(EXC_CAUSE_INSTR_FAULT)    |
-      MEDELEG_BIT(EXC_CAUSE_ILLEGAL_INSTR)    | MEDELEG_BIT(EXC_CAUSE_BREAKPOINT)     |
-      MEDELEG_BIT(EXC_CAUSE_LOAD_MISALIGNED)  | MEDELEG_BIT(EXC_CAUSE_LOAD_FAULT)     |
-      MEDELEG_BIT(EXC_CAUSE_STORE_MISALIGNED) | MEDELEG_BIT(EXC_CAUSE_STORE_FAULT)    |
-      MEDELEG_BIT(EXC_CAUSE_ECALL_U)          | MEDELEG_BIT(EXC_CAUSE_FETCH_PAGE_FAULT) |
-      MEDELEG_BIT(EXC_CAUSE_LOAD_PAGE_FAULT)  | MEDELEG_BIT(EXC_CAUSE_STORE_PAGE_FAULT);
+      MEDELEG_BIT(EXC_CAUSE_INSTR_MISALIGNED) | MEDELEG_BIT(EXC_CAUSE_INSTR_FAULT) |
+      MEDELEG_BIT(EXC_CAUSE_ILLEGAL_INSTR) | MEDELEG_BIT(EXC_CAUSE_BREAKPOINT) |
+      MEDELEG_BIT(EXC_CAUSE_LOAD_MISALIGNED) | MEDELEG_BIT(EXC_CAUSE_LOAD_FAULT) |
+      MEDELEG_BIT(EXC_CAUSE_STORE_MISALIGNED) | MEDELEG_BIT(EXC_CAUSE_STORE_FAULT) |
+      MEDELEG_BIT(EXC_CAUSE_ECALL_U) | MEDELEG_BIT(EXC_CAUSE_FETCH_PAGE_FAULT) |
+      MEDELEG_BIT(EXC_CAUSE_LOAD_PAGE_FAULT) | MEDELEG_BIT(EXC_CAUSE_STORE_PAGE_FAULT);
 
   // Delegate timer, software, and external interrupts to S-mode
   cpu->csrs[CSR_MIDELEG] = MIP_SSIP | MIP_STIP | MIP_SEIP;
@@ -24,8 +26,8 @@ void sbi_init(CPU *cpu, const u64 kernel_entry) {
   // Simulate mret: MPP=S, MPIE=1, drop privilege to S-mode, jump to kernel
   u64 status = cpu->csrs[CSR_MSTATUS];
   status &= ~MSTATUS_MPP_MASK;
-  status |=  ((u64)PRIV_S << MSTATUS_MPP_SHIFT);
-  status |=  MSTATUS_MPIE;
+  status |= ((u64)PRIV_S << MSTATUS_MPP_SHIFT);
+  status |= MSTATUS_MPIE;
   cpu->csrs[CSR_MSTATUS] = status;
 
   cpu->pc        = kernel_entry;
@@ -38,12 +40,18 @@ void sbi_init(CPU *cpu, const u64 kernel_entry) {
 
 static bool is_supported_eid(u64 eid) {
   switch (eid) {
-  case SBI_EID_SET_TIMER: return true;
-  case SBI_EID_PUTCHAR:   return true;
-  case SBI_EID_BASE:      return true;
-  case SBI_EID_TIMER:     return true;
-  case SBI_EID_RESET:     return true;
-  default:                return false;
+  case SBI_EID_SET_TIMER:
+    return true;
+  case SBI_EID_PUTCHAR:
+    return true;
+  case SBI_EID_BASE:
+    return true;
+  case SBI_EID_TIMER:
+    return true;
+  case SBI_EID_RESET:
+    return true;
+  default:
+    return false;
   }
 }
 

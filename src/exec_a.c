@@ -1,22 +1,7 @@
 #include "exec_a.h"
+
 #include "mmu.h"
-
-// A-extension funct5 codes (bits[31:27] = funct7 >> 2)
-#define F5_LR 0x02
-#define F5_SC 0x03
-#define F5_AMOSWAP 0x01
-#define F5_AMOADD 0x00
-#define F5_AMOXOR 0x04
-#define F5_AMOAND 0x0C
-#define F5_AMOOR 0x08
-#define F5_AMOMIN 0x10
-#define F5_AMOMAX 0x14
-#define F5_AMOMINU 0x18
-#define F5_AMOMAXU 0x1C
-
-// funct3 width codes
-#define F3_AMO_W 0x2 // 32-bit
-#define F3_AMO_D 0x3 // 64-bit
+#include "opcodes.h"
 
 // Reserved virtual address for LR/SC — single-core so reservation always succeeds
 static u64 s_reservation = (u64)-1; // -1 = no active reservation
@@ -43,9 +28,10 @@ static void amo_write(const Memory *mem, const u64 addr, const u64 val, const u3
 // ---------------------------------------------------------------------------
 
 static void execute_lr(CPU *cpu, const Memory *mem, Instruction inst) {
-  u64 va        = cpu->regs[inst.rs1];
-  u64 pa        = mmu_translate(cpu, mem, va, MMU_LOAD);
-  if (pa == MMU_FAULT) return;
+  u64 va = cpu->regs[inst.rs1];
+  u64 pa = mmu_translate(cpu, mem, va, MMU_LOAD);
+  if (pa == MMU_FAULT)
+    return;
   s_reservation = va; // reserve the virtual address (single-core: always succeeds)
   reg_write(cpu, inst.rd, amo_read(mem, pa, inst.funct3));
 }
@@ -53,7 +39,8 @@ static void execute_lr(CPU *cpu, const Memory *mem, Instruction inst) {
 static void execute_sc(CPU *cpu, const Memory *mem, Instruction inst) {
   u64 va = cpu->regs[inst.rs1];
   u64 pa = mmu_translate(cpu, mem, va, MMU_STORE);
-  if (pa == MMU_FAULT) return;
+  if (pa == MMU_FAULT)
+    return;
   if (va == s_reservation) {
     amo_write(mem, pa, cpu->regs[inst.rs2], inst.funct3);
     s_reservation = (u64)-1;
@@ -68,9 +55,10 @@ static void execute_sc(CPU *cpu, const Memory *mem, Instruction inst) {
 // ---------------------------------------------------------------------------
 
 static void execute_amo(CPU *cpu, const Memory *mem, Instruction inst) {
-  u64 va   = cpu->regs[inst.rs1];
-  u64 pa   = mmu_translate(cpu, mem, va, MMU_STORE);
-  if (pa == MMU_FAULT) return;
+  u64 va = cpu->regs[inst.rs1];
+  u64 pa = mmu_translate(cpu, mem, va, MMU_STORE);
+  if (pa == MMU_FAULT)
+    return;
   u64 old    = amo_read(mem, pa, inst.funct3);
   u64 src    = cpu->regs[inst.rs2];
   u32 funct5 = inst.funct7 >> 2;

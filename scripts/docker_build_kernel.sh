@@ -12,7 +12,6 @@ make olddefconfig ARCH=riscv CROSS_COMPILE=${CROSS}-
 # NONPORTABLE=y stops CONFIG_PORTABLE from re-selecting EFI via syncconfig.
 sed -i 's/# CONFIG_NONPORTABLE is not set/CONFIG_NONPORTABLE=y/' .config
 sed -i 's/CONFIG_EFI=y/# CONFIG_EFI is not set/' .config
-sed -i 's/CONFIG_RISCV_ISA_C=y/# CONFIG_RISCV_ISA_C is not set/' .config
 
 make -j$(nproc) ARCH=riscv CROSS_COMPILE=${CROSS}- vmlinux
 

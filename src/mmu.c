@@ -1,5 +1,7 @@
-#include <stdio.h>
 #include "mmu.h"
+
+#include <stdio.h>
+
 #include "trap.h"
 
 // ---------------------------------------------------------------------------
@@ -70,8 +72,7 @@ static bool pte_check(u64 pte, const CPU *cpu, MmuAccess access) {
   if (cpu->privilege == PRIV_U && !(pte & PTE_U))
     return false;
   // S-mode can access user pages only when sstatus.SUM is set
-  if (cpu->privilege == PRIV_S && (pte & PTE_U) &&
-      !(cpu->csrs[CSR_MSTATUS] & SSTATUS_SUM))
+  if (cpu->privilege == PRIV_S && (pte & PTE_U) && !(cpu->csrs[CSR_MSTATUS] & SSTATUS_SUM))
     return false;
   return true;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+
 #include "cpu.h"
 #include "memory.h"
 

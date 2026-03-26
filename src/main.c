@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+
 #include "clint.h"
 #include "cpu.h"
 #include "elf.h"
@@ -41,8 +42,7 @@ int main(int argc, char *argv[]) {
   while (!g_cpu.halted) {
     cpu_step(&g_cpu, &g_mem);
     if (g_cpu.steps % 10000000 == 0)
-      fprintf(stderr, "[%llu Msteps] pc=0x%llx\n",
-              (unsigned long long)(g_cpu.steps / 1000000),
+      fprintf(stderr, "[%llu Msteps] pc=0x%llx\n", (unsigned long long)(g_cpu.steps / 1000000),
               (unsigned long long)g_cpu.pc);
   }
 }
