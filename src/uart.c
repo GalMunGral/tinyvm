@@ -6,6 +6,8 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "plic.h"
+
 #define UART_SIZE 8
 
 // NS16550 register offsets
@@ -45,6 +47,7 @@ static struct {
   u8   lcr, ier, mcr, scr, dll, dlh;
   u8   rx_buf;
   bool rx_ready;
+  bool thre_ip; // THRE interrupt pending (edge-triggered: set on THR empty, cleared on IIR read)
 } s_uart;
 
 static struct termios s_orig_termios;
@@ -65,7 +68,18 @@ static void uart_poll_rx(void) {
       exit(0);
     s_uart.rx_buf   = c;
     s_uart.rx_ready = true;
+    if (s_uart.ier & IER_RDA_ENABLE)
+      plic_set_pending(PLIC_IRQ_UART);
   }
+}
+
+// Per-step IRQ source callback — check stdin for incoming data.
+// In interrupt-driven mode the kernel sleeps waiting for SEIP, so we must
+// proactively poll rather than relying on guest MMIO reads to trigger it.
+static void uart_irq_source(CPU *cpu) {
+  if (cpu->steps & 0x3FF) // poll every 1024 steps (~100us at 10MHz)
+    return;
+  uart_poll_rx();
 }
 
 static u64 uart_read(MemRegion *r, u64 offset, size_t width) {
@@ -85,8 +99,10 @@ static u64 uart_read(MemRegion *r, u64 offset, size_t width) {
     uart_poll_rx();
     if (s_uart.rx_ready && (s_uart.ier & IER_RDA_ENABLE))
       return UART_IIR_RDA;
-    if (s_uart.ier & IER_THRE_ENABLE)
+    if (s_uart.thre_ip && (s_uart.ier & IER_THRE_ENABLE)) {
+      s_uart.thre_ip = false; // cleared by reading IIR when THRE is reported
       return UART_IIR_THRE;
+    }
     return UART_IIR_NO_INT;
   case UART_LCR:
     return s_uart.lcr;
@@ -116,6 +132,9 @@ static void uart_write(MemRegion *r, u64 offset, u64 val, size_t width) {
     }
     putchar((int)v);
     fflush(stdout);
+    s_uart.thre_ip = true; // THR just became empty
+    if (s_uart.ier & IER_THRE_ENABLE)
+      plic_set_pending(PLIC_IRQ_UART);
     break;
   case UART_IER:
     if (s_uart.lcr & UART_LCR_DLAB) {
@@ -123,6 +142,12 @@ static void uart_write(MemRegion *r, u64 offset, u64 val, size_t width) {
       break;
     }
     s_uart.ier = v;
+    if (v & IER_THRE_ENABLE) {
+      s_uart.thre_ip = true; // THRE enabled while THR already empty
+      plic_set_pending(PLIC_IRQ_UART);
+    } else if ((v & IER_RDA_ENABLE) && s_uart.rx_ready) {
+      plic_set_pending(PLIC_IRQ_UART);
+    }
     break;
   case UART_FCR:
     break; // FIFO control — absorb, no FIFO to manage
@@ -140,7 +165,8 @@ static void uart_write(MemRegion *r, u64 offset, u64 val, size_t width) {
   }
 }
 
-void uart_init(Memory *mem) {
+void uart_init(Memory *mem, CPU *cpu) {
+  (void)cpu;
   // Make stdin non-blocking so uart_poll_rx never stalls the emulator
   s_orig_flags = fcntl(STDIN_FILENO, F_GETFL);
   fcntl(STDIN_FILENO, F_SETFL, s_orig_flags | O_NONBLOCK);
@@ -153,5 +179,6 @@ void uart_init(Memory *mem) {
   raw.c_oflag = s_orig_termios.c_oflag; // preserve ONLCR so \n -> \r\n still works
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 
+  cpu_add_irq_source(uart_irq_source);
   mem_add_device(mem, UART_BASE, UART_SIZE, uart_read, uart_write);
 }

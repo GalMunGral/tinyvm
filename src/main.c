@@ -6,6 +6,7 @@
 #include "elf.h"
 #include "linux_boot.h"
 #include "memory.h"
+#include "plic.h"
 #include "uart.h"
 
 #define RAM_BASE 0x80000000ULL
@@ -32,7 +33,8 @@ int main(int argc, char *argv[]) {
   }
 
   mem_add_region(&g_mem, RAM_BASE, RAM_SIZE);
-  uart_init(&g_mem);
+  uart_init(&g_mem, &g_cpu);
+  plic_init(&g_mem, &g_cpu);
   clint_init(&g_mem, &g_cpu);
   cpu_init(&g_cpu);
 
