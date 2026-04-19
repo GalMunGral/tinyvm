@@ -1,5 +1,6 @@
 CC      = clang
 CFLAGS  = -std=c11 -Wall -Wextra -Iinclude -MMD -MP
+CFLAGS_RELEASE = $(CFLAGS) -O3 -march=native -flto -DNDEBUG
 LDFLAGS =
 
 SRC     = $(wildcard src/*.c)
@@ -19,6 +20,9 @@ DTB_BIN = dtb/tinyvm.dtb
 .PHONY: all clean fmt test dtb rootfs kernel image initramfs
 
 all: $(BIN) $(DTB_BIN)
+
+release: clean
+	$(MAKE) CFLAGS="$(CFLAGS_RELEASE)" LDFLAGS="-flto"
 
 dtb: $(DTB_BIN)
 
