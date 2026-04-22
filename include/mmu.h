@@ -19,3 +19,14 @@ typedef enum {
 // Returns the physical address, or MMU_FAULT if a page fault was taken.
 // Pass-through (returns va unchanged) when in M-mode or SATP.MODE is bare.
 u64 mmu_translate(CPU *cpu, const Memory *mem, u64 va, MmuAccess access);
+
+// Virtual memory read/write — translate + access in one call.
+// Return false on page fault (trap already taken), true on success.
+bool vm_read8(CPU *cpu, const Memory *mem, u64 va, u8 *out);
+bool vm_read16(CPU *cpu, const Memory *mem, u64 va, u16 *out);
+bool vm_read32(CPU *cpu, const Memory *mem, u64 va, u32 *out);
+bool vm_read64(CPU *cpu, const Memory *mem, u64 va, u64 *out);
+bool vm_write8(CPU *cpu, const Memory *mem, u64 va, u8 val);
+bool vm_write16(CPU *cpu, const Memory *mem, u64 va, u16 val);
+bool vm_write32(CPU *cpu, const Memory *mem, u64 va, u32 val);
+bool vm_write64(CPU *cpu, const Memory *mem, u64 va, u64 val);

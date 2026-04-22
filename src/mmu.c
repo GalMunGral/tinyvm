@@ -133,3 +133,71 @@ u64 mmu_translate(CPU *cpu, const Memory *mem, u64 va, MmuAccess access) {
 
   return pte_to_pa(pte, va, level);
 }
+
+// ---------------------------------------------------------------------------
+// Virtual memory read/write wrappers
+// ---------------------------------------------------------------------------
+
+bool vm_read8(CPU *cpu, const Memory *mem, u64 va, u8 *out) {
+  u64 pa = mmu_translate(cpu, mem, va, MMU_LOAD);
+  if (pa == MMU_FAULT)
+    return false;
+  *out = mem_read8(mem, pa);
+  return true;
+}
+
+bool vm_read16(CPU *cpu, const Memory *mem, u64 va, u16 *out) {
+  u64 pa = mmu_translate(cpu, mem, va, MMU_LOAD);
+  if (pa == MMU_FAULT)
+    return false;
+  *out = mem_read16(mem, pa);
+  return true;
+}
+
+bool vm_read32(CPU *cpu, const Memory *mem, u64 va, u32 *out) {
+  u64 pa = mmu_translate(cpu, mem, va, MMU_LOAD);
+  if (pa == MMU_FAULT)
+    return false;
+  *out = mem_read32(mem, pa);
+  return true;
+}
+
+bool vm_read64(CPU *cpu, const Memory *mem, u64 va, u64 *out) {
+  u64 pa = mmu_translate(cpu, mem, va, MMU_LOAD);
+  if (pa == MMU_FAULT)
+    return false;
+  *out = mem_read64(mem, pa);
+  return true;
+}
+
+bool vm_write8(CPU *cpu, const Memory *mem, u64 va, u8 val) {
+  u64 pa = mmu_translate(cpu, mem, va, MMU_STORE);
+  if (pa == MMU_FAULT)
+    return false;
+  mem_write8(mem, pa, val);
+  return true;
+}
+
+bool vm_write16(CPU *cpu, const Memory *mem, u64 va, u16 val) {
+  u64 pa = mmu_translate(cpu, mem, va, MMU_STORE);
+  if (pa == MMU_FAULT)
+    return false;
+  mem_write16(mem, pa, val);
+  return true;
+}
+
+bool vm_write32(CPU *cpu, const Memory *mem, u64 va, u32 val) {
+  u64 pa = mmu_translate(cpu, mem, va, MMU_STORE);
+  if (pa == MMU_FAULT)
+    return false;
+  mem_write32(mem, pa, val);
+  return true;
+}
+
+bool vm_write64(CPU *cpu, const Memory *mem, u64 va, u64 val) {
+  u64 pa = mmu_translate(cpu, mem, va, MMU_STORE);
+  if (pa == MMU_FAULT)
+    return false;
+  mem_write64(mem, pa, val);
+  return true;
+}

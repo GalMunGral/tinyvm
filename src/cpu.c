@@ -520,32 +520,54 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
 
   case OP_LOAD: {
     u64 va = rs1 + (u64)imm;
-    u64 pa = mmu_translate(cpu, mem, va, MMU_LOAD);
-    if (pa == MMU_FAULT)
-      return;
     u64 val = 0;
     switch (inst.funct3) {
-    case F3_LB:
-      val = (u64)(i64)(i8)mem_read8(mem, pa);
+    case F3_LB: {
+      u8 tmp;
+      if (!vm_read8(cpu, mem, va, &tmp))
+        return;
+      val = (u64)(i64)(i8)tmp;
       break;
-    case F3_LH:
-      val = (u64)(i64)(i16)mem_read16(mem, pa);
+    }
+    case F3_LH: {
+      u16 tmp;
+      if (!vm_read16(cpu, mem, va, &tmp))
+        return;
+      val = (u64)(i64)(i16)tmp;
       break;
-    case F3_LW:
-      val = (u64)(i64)(i32)mem_read32(mem, pa);
+    }
+    case F3_LW: {
+      u32 tmp;
+      if (!vm_read32(cpu, mem, va, &tmp))
+        return;
+      val = (u64)(i64)(i32)tmp;
       break;
+    }
     case F3_LD:
-      val = mem_read64(mem, pa);
+      if (!vm_read64(cpu, mem, va, &val))
+        return;
       break;
-    case F3_LBU:
-      val = (u64)mem_read8(mem, pa);
+    case F3_LBU: {
+      u8 tmp;
+      if (!vm_read8(cpu, mem, va, &tmp))
+        return;
+      val = (u64)tmp;
       break;
-    case F3_LHU:
-      val = (u64)mem_read16(mem, pa);
+    }
+    case F3_LHU: {
+      u16 tmp;
+      if (!vm_read16(cpu, mem, va, &tmp))
+        return;
+      val = (u64)tmp;
       break;
-    case F3_LWU:
-      val = (u64)mem_read32(mem, pa);
+    }
+    case F3_LWU: {
+      u32 tmp;
+      if (!vm_read32(cpu, mem, va, &tmp))
+        return;
+      val = (u64)tmp;
       break;
+    }
     default:
       fprintf(stderr, "unknown load funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
       exit(1);
@@ -556,26 +578,26 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
 
   case OP_STORE: {
     u64 va = rs1 + (u64)imm;
-    u64 pa = mmu_translate(cpu, mem, va, MMU_STORE);
-    if (pa == MMU_FAULT)
-      return;
+    bool ok;
     switch (inst.funct3) {
     case F3_SB:
-      mem_write8(mem, pa, (u8)rs2);
+      ok = vm_write8(cpu, mem, va, (u8)rs2);
       break;
     case F3_SH:
-      mem_write16(mem, pa, (u16)rs2);
+      ok = vm_write16(cpu, mem, va, (u16)rs2);
       break;
     case F3_SW:
-      mem_write32(mem, pa, (u32)rs2);
+      ok = vm_write32(cpu, mem, va, (u32)rs2);
       break;
     case F3_SD:
-      mem_write64(mem, pa, rs2);
+      ok = vm_write64(cpu, mem, va, rs2);
       break;
     default:
       fprintf(stderr, "unknown store funct3=0x%x at pc=0x%llx\n", inst.funct3, pc);
       exit(1);
     }
+    if (!ok)
+      return;
     break;
   }
 
@@ -760,14 +782,16 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
   // -------------------------------------------------------------------------
   case OP_FLW_FLD: {
     u64 va = rs1 + (u64)imm;
-    u64 pa = mmu_translate(cpu, mem, va, MMU_LOAD);
-    if (pa == MMU_FAULT)
-      return;
     if (inst.funct3 == F3_FLW_FSW) {
-      u32 bits = mem_read32(mem, pa);
+      u32 bits;
+      if (!vm_read32(cpu, mem, va, &bits))
+        return;
       memcpy(&cpu->fregs[inst.rd], &bits, 4);
     } else { // FLD
-      cpu->fregs[inst.rd] = mem_read64(mem, pa);
+      u64 bits;
+      if (!vm_read64(cpu, mem, va, &bits))
+        return;
+      cpu->fregs[inst.rd] = bits;
     }
     break;
   }
@@ -777,15 +801,14 @@ static void execute(CPU *cpu, const Memory *mem, Instruction inst) {
   // -------------------------------------------------------------------------
   case OP_FSW_FSD: {
     u64 va = rs1 + (u64)imm;
-    u64 pa = mmu_translate(cpu, mem, va, MMU_STORE);
-    if (pa == MMU_FAULT)
-      return;
     if (inst.funct3 == F3_FLW_FSW) {
       u32 bits;
       memcpy(&bits, &cpu->fregs[inst.rs2], 4);
-      mem_write32(mem, pa, bits);
+      if (!vm_write32(cpu, mem, va, bits))
+        return;
     } else { // FSD
-      mem_write64(mem, pa, cpu->fregs[inst.rs2]);
+      if (!vm_write64(cpu, mem, va, cpu->fregs[inst.rs2]))
+        return;
     }
     break;
   }
