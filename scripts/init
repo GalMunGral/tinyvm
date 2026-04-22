@@ -7,4 +7,4 @@ mount -t devtmpfs devtmpfs /dev
 mkdir -p /mnt
 mount /dev/vda /mnt 2>/dev/null || { mkfs.ext2 /dev/vda && mount /dev/vda /mnt; }
 
-exec /bin/sh -i
+exec setsid cttyhack /bin/sh -i
