@@ -13,6 +13,7 @@ struct MemRegion {
   u64        base;
   size_t     size;
   u8        *data;
+  void      *opaque; // device-specific context (e.g. VirtioSlot *)
   MemReadFn  read;
   MemWriteFn write;
 };
@@ -22,8 +23,9 @@ typedef struct {
   int       count;
 } Memory;
 
-bool mem_add_region(Memory *mem, u64 base, size_t size);
-bool mem_add_device(Memory *mem, u64 base, size_t size, MemReadFn read, MemWriteFn write);
+MemRegion *mem_add_region(Memory *mem, u64 base, size_t size);
+MemRegion *mem_add_device(Memory *mem, u64 base, size_t size, MemReadFn read, MemWriteFn write,
+                          void *opaque);
 
 u8  mem_read8(const Memory *mem, u64 addr);
 u16 mem_read16(const Memory *mem, u64 addr);

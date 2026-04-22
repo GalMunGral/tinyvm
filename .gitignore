@@ -6,3 +6,4 @@ kernel/
 *.o
 tests/*.elf
 tests/*.bin
+disk/

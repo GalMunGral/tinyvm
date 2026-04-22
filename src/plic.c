@@ -159,5 +159,5 @@ static void plic_write(MemRegion *r, u64 offset, u64 val, size_t width) {
 
 void plic_init(Memory *mem, CPU *cpu) {
   s_plic.cpu = cpu;
-  mem_add_device(mem, PLIC_BASE, PLIC_SIZE, plic_read, plic_write);
+  mem_add_device(mem, PLIC_BASE, PLIC_SIZE, plic_read, plic_write, NULL);
 }

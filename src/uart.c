@@ -180,5 +180,5 @@ void uart_init(Memory *mem, CPU *cpu) {
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 
   cpu_add_irq_source(uart_irq_source);
-  mem_add_device(mem, UART_BASE, UART_SIZE, uart_read, uart_write);
+  mem_add_device(mem, UART_BASE, UART_SIZE, uart_read, uart_write, NULL);
 }

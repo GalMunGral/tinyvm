@@ -30,30 +30,35 @@ static MemRegion *mem_find_region(const Memory *mem, u64 addr, size_t width) {
   exit(1);
 }
 
-static bool add_region(Memory *mem, u64 base, size_t size, u8 *data, MemReadFn read,
-                       MemWriteFn write) {
+static MemRegion *add_region(Memory *mem, u64 base, size_t size, u8 *data, MemReadFn read,
+                             MemWriteFn write) {
   if (mem->count >= MAX_REGIONS) {
     fprintf(stderr, "add_region: max regions (%d) reached\n", MAX_REGIONS);
-    return false;
+    return NULL;
   }
-  mem->regions[mem->count++] =
+  int idx = mem->count++;
+  mem->regions[idx] =
       (MemRegion){.base = base, .size = size, .data = data, .read = read, .write = write};
-  return true;
+  return &mem->regions[idx];
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-bool mem_add_region(Memory *mem, u64 base, size_t size) {
+MemRegion *mem_add_region(Memory *mem, u64 base, size_t size) {
   u8 *data = calloc(1, size);
   if (!data)
-    return false;
+    return NULL;
   return add_region(mem, base, size, data, default_read, default_write);
 }
 
-bool mem_add_device(Memory *mem, u64 base, size_t size, MemReadFn read, MemWriteFn write) {
-  return add_region(mem, base, size, NULL, read, write);
+MemRegion *mem_add_device(Memory *mem, u64 base, size_t size, MemReadFn read, MemWriteFn write,
+                          void *opaque) {
+  MemRegion *r = add_region(mem, base, size, NULL, read, write);
+  if (r)
+    r->opaque = opaque;
+  return r;
 }
 
 u8 mem_read8(const Memory *mem, u64 addr) {

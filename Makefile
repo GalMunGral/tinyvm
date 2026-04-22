@@ -17,7 +17,11 @@ HOST_TESTS    = $(patsubst tests/host/%.c, tests/host/%, $(wildcard tests/host/*
 DTB_SRC = dtb/tinyvm.dts
 DTB_BIN = dtb/tinyvm.dtb
 
-.PHONY: all clean fmt test dtb rootfs kernel image initramfs
+DISK_IMG = disk/vda.img
+DISK_SIZE = 64M
+KERNEL   = kernel/vmlinux
+
+.PHONY: all clean fmt test dtb rootfs kernel image initramfs disk run run-release
 
 all: $(BIN) $(DTB_BIN)
 
@@ -57,6 +61,18 @@ tests/host/%: tests/host/%.c $(HOST_TEST_OBJ) | build
 
 test: $(HOST_TESTS)
 	@for t in $(HOST_TESTS); do echo "running $$t"; $$t; done
+
+disk: $(DISK_IMG)
+
+$(DISK_IMG):
+	mkdir -p disk
+	dd if=/dev/zero of=$@ bs=1M count=$(subst M,,$(DISK_SIZE))
+
+run: $(BIN) $(DTB_BIN) $(DISK_IMG)
+	$(BIN) linux $(KERNEL)
+
+run-release: release $(DTB_BIN) $(DISK_IMG)
+	$(BIN) linux $(KERNEL)
 
 image:
 	bash scripts/build_image.sh

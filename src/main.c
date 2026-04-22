@@ -8,6 +8,7 @@
 #include "memory.h"
 #include "plic.h"
 #include "uart.h"
+#include "virtio.h"
 
 #define RAM_BASE 0x80000000ULL
 #define RAM_SIZE (256 * 1024 * 1024) // 256MB, covers 0x80000000–0x90000000
@@ -35,6 +36,7 @@ int main(int argc, char *argv[]) {
   mem_add_region(&g_mem, RAM_BASE, RAM_SIZE);
   uart_init(&g_mem, &g_cpu);
   plic_init(&g_mem, &g_cpu);
+  virtio_blk_init(&g_mem, &g_cpu, "disk/vda.img");
   clint_init(&g_mem, &g_cpu);
   cpu_init(&g_cpu);
 

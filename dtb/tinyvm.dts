@@ -58,6 +58,13 @@
 			interrupts-extended = <&cpu0_intc 3 &cpu0_intc 7>;
 		};
 
+		virtio_mmio@10001000 {
+			compatible = "virtio,mmio";
+			reg = <0x0 0x10001000 0x0 0x1000>;
+			interrupt-parent = <&plic>;
+			interrupts = <2>;
+		};
+
 		uart@10000000 {
 			compatible = "ns16550a";
 			reg = <0x0 0x10000000 0x0 0x8>;

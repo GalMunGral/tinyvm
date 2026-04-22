@@ -40,5 +40,5 @@ void clint_set_timecmp(const u64 val) { g_clint.mtimecmp = val; }
 void clint_init(Memory *mem, CPU *cpu) {
   g_clint.cpu = cpu;
   cpu_add_irq_source(clint_irq_source);
-  mem_add_device(mem, CLINT_BASE, CLINT_SIZE, clint_read, clint_write);
+  mem_add_device(mem, CLINT_BASE, CLINT_SIZE, clint_read, clint_write, NULL);
 }
