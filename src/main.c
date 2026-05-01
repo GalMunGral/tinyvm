@@ -4,6 +4,7 @@
 #include "clint.h"
 #include "cpu.h"
 #include "elf.h"
+#include "kernel_boot.h"
 #include "linux_boot.h"
 #include "memory.h"
 #include "plic.h"
@@ -21,6 +22,8 @@ static int boot(const char *mode, const char *binary) {
     return linux_boot(&g_mem, &g_cpu, binary, "dtb/tinyvm.dtb", "rootfs/initramfs.cpio.gz");
   if (strcmp(mode, "elf") == 0)
     return elf_boot(&g_mem, &g_cpu, binary);
+  if (strcmp(mode, "kernel") == 0)
+    return kernel_boot(&g_mem, &g_cpu, binary);
   fprintf(stderr, "unknown mode: %s\n", mode);
   return -1;
 }
@@ -28,15 +31,18 @@ static int boot(const char *mode, const char *binary) {
 int main(int argc, char *argv[]) {
   if (argc < 3) {
     fprintf(stderr, "usage: tinyvm <mode> <binary>\n");
-    fprintf(stderr, "  linux <kernel.elf>  -- load kernel + DTB, Linux boot convention\n");
-    fprintf(stderr, "  elf   <binary.elf>  -- load ELF and jump to entry\n");
+    fprintf(stderr, "  linux  <kernel.elf>  -- load kernel + DTB, Linux boot convention\n");
+    fprintf(stderr, "  kernel <kernel.elf>  -- load bare-metal kernel, drop to S-mode\n");
+    fprintf(stderr, "  elf    <binary.elf>  -- load ELF and jump to entry (M-mode)\n");
     return 1;
   }
+
+  const char *disk = argc >= 4 ? argv[3] : "disk/vda.img";
 
   mem_add_region(&g_mem, RAM_BASE, RAM_SIZE);
   uart_init(&g_mem, &g_cpu);
   plic_init(&g_mem, &g_cpu);
-  virtio_blk_init(&g_mem, &g_cpu, "disk/vda.img");
+  virtio_blk_init(&g_mem, &g_cpu, disk);
   clint_init(&g_mem, &g_cpu);
   cpu_init(&g_cpu);
 
