@@ -1,75 +1,17 @@
-# tinyvm
-
-A minimal RISC-V 64-bit emulator that boots Linux. Implements RV64GC (IMAFDC) with Sv39 virtual memory, NS16550A UART, and CLINT timer.
-
-## Features
-
-- RV64IMAFDC — integer, multiply, atomics, float, double, compressed instructions
-- Sv39 page table walker
-- NS16550A UART — interactive stdin/stdout, polled via IIR without a PLIC
-- CLINT — mtime/mtimecmp for timer interrupts
-- Linux boot convention — loads kernel ELF + DTB + initramfs
-- Raw mode terminal — keypresses go directly to the guest; `Ctrl-\` to exit
-
-## Dependencies
-
-| Tool | Purpose |
-|------|---------|
-| `clang` | Build the emulator |
-| `dtc` | Compile the device tree |
-| `riscv64-elf-gcc` | Build RISC-V test binaries |
-| Docker | Build kernel and rootfs (cross-compilation) |
-
-## Build
+# TinyVM
 
 ```sh
-make          # build emulator + DTB
+make                         # build emulator + DTB
+make image && make kernel && make rootfs   # cross-compile Linux + BusyBox (requires Docker)
+./bin/tinyvm linux kernel/linux.elf        # boot; Ctrl-\ to exit
 ```
 
-## Run
+## Rhetorical Design
 
-```sh
-./bin/tinyvm linux kernel/linux.elf
-```
+### Purpose
 
-Press `Ctrl-\` to exit the emulator.
+The universal Turing machine, implemented in [universal-turing-machine](https://github.com/GalMunGral/universal-turing-machine), establishes the principle: the UTM reads an encoded description of another machine from its tape and simulates it step by step. There is no distinction between the fixed m-configurations of the simulator and the encoded m-configurations of the simulated machine — what matters is only the specification, not the substrate. The same principle applies at every level of the hardware-software stack. An operating system kernel does not know or care whether the instruction set it targets is implemented in silicon or simulated by another program; it interacts with an interface. A corollary is that the hierarchy is arbitrarily deep: one could run another emulator on the emulated machine and boot Linux on that, since nothing in the specification prevents it.
 
-## Building the kernel and rootfs
+### Strategy
 
-These require Docker (cross-compilation for RISC-V):
-
-```sh
-make image    # build Docker image with RISC-V toolchain
-make kernel   # cross-compile Linux kernel → kernel/linux.elf
-make rootfs   # build BusyBox rootfs → rootfs/initramfs.cpio.gz
-```
-
-To modify the init script and repack without a full rootfs rebuild:
-
-```sh
-# edit scripts/init, then:
-make initramfs
-```
-
-## Make targets
-
-| Target | Description |
-|--------|-------------|
-| `all` | Build emulator and DTB |
-| `dtb` | Compile `dtb/tinyvm.dts` → `dtb/tinyvm.dtb` |
-| `initramfs` | Repack initramfs with updated `scripts/init` |
-| `kernel` | Cross-compile Linux kernel (requires Docker) |
-| `rootfs` | Build BusyBox rootfs (requires Docker) |
-| `image` | Build Docker builder image |
-| `test` | Run host-side unit tests |
-| `fmt` | Format source with clang-format |
-| `clean` | Remove build artifacts |
-
-## Demo: BusyBox httpd
-
-After booting to the shell:
-
-```sh
-sh /httpd.sh          # starts httpd on loopback port 8080
-wget -q -O - http://127.0.0.1:8080/
-```
+To make this concrete, the project implements the RISC-V 64-bit ISA in software at a level sufficient to boot Linux and run interactive user programs such as `vi`. The result is a machine that is entirely software yet indistinguishable, from Linux's point of view, from physical hardware.
